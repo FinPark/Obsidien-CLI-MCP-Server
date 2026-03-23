@@ -33,6 +33,7 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
   const filename = args.filename as string;
   const sourceFolder = (args.sourceFolder as string) || '📥 Inbox';
   const destInput = args.destinationFolder as string;
+  let userAlreadyInteracted = false;
 
   // 1. Resolve source folder
   const resolvedSource = resolveFolder(sourceFolder);
@@ -50,6 +51,7 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
       }, null, 2);
     }
     srcFolder = picked;
+    userAlreadyInteracted = true;
   } else {
     srcFolder = resolvedSource[0];
   }
@@ -70,6 +72,7 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
       }, null, 2);
     }
     dstFolder = picked;
+    userAlreadyInteracted = true;
   } else {
     dstFolder = resolvedDest[0];
   }
@@ -90,6 +93,7 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
       }, null, 2);
     }
     noteFileName = picked;
+    userAlreadyInteracted = true;
   } else {
     noteFileName = matchingFiles[0].name;
   }
@@ -104,28 +108,28 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
     return JSON.stringify({ error: `Datei existiert bereits im Ziel: "${newRelPath}"` });
   }
 
-  // 5. Confirmation before move
-  const confirmed = await tryElicit(server, {
-    mode: 'form',
-    message: `Notiz verschieben?\n\n📄 ${noteFileName}\n📂 Von: ${srcFolder}\n📁 Nach: ${dstFolder}`,
-    requestedSchema: {
-      type: 'object',
-      properties: {
-        confirm: {
-          type: 'boolean',
-          title: 'Verschieben bestätigen',
-          description: `"${noteFileName}" → ${dstFolder}`,
-          default: true,
+  // 5. Confirmation — only if user hasn't already interacted via elicitation
+  if (!userAlreadyInteracted) {
+    const confirmed = await tryElicit(server, {
+      mode: 'form',
+      message: `Notiz verschieben?\n\n📄 ${noteFileName}\n📂 Von: ${srcFolder}\n📁 Nach: ${dstFolder}`,
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          confirm: {
+            type: 'boolean',
+            title: 'Verschieben bestätigen',
+            description: `"${noteFileName}" → ${dstFolder}`,
+            default: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  // If elicitation worked and user declined
-  if (confirmed && !confirmed.content?.confirm) {
-    return JSON.stringify({ message: 'Verschieben abgebrochen.' });
+    if (confirmed && !confirmed.content?.confirm) {
+      return JSON.stringify({ message: 'Verschieben abgebrochen.' });
+    }
   }
-  // If elicitation timed out (null) → proceed anyway (LLM already decided)
 
   // 6. Move the file
   fs.renameSync(oldAbsPath, newAbsPath);
