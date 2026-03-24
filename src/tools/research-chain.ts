@@ -8,8 +8,9 @@ Follows the chain backwards until the root note (no predecessor) is found.
 IMPORTANT: Pass an actual note file name or path, NOT a folder name. Use search_notes or list_files first
 if you're unsure of the exact note name. The tool has fallbacks but works best with precise input.
 
-Returns:
-1. **chain** — The full note chain from oldest (root) to newest, with title, path, and date
+Returns a COMPLETE context package — no follow-up calls to file_info, list_files, or list_folders needed:
+1. **chain** — The full note chain from oldest (root) to newest, with: title, path, date, folder,
+   size, created/modified timestamps, Inhalt (summary), Teilnehmer, tags, and heading outline
 2. **links** — All outgoing links from the chain notes (deduplicated)
 3. **backlinks** — All backlinks TO the chain notes (deduplicated, excluding chain-internal links)
 
@@ -26,7 +27,15 @@ This gives a complete overview of a topic's history and related context.`,
 interface ChainEntry {
   title: string;
   path: string;
+  folder: string;
   datum?: string;
+  inhalt?: string;
+  teilnehmer?: string[];
+  tags?: string[];
+  size?: number;
+  created?: number;
+  modified?: number;
+  outline?: string;
 }
 
 export async function handleResearchChain(args: Record<string, unknown>): Promise<string> {
@@ -41,12 +50,10 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
   let resolvedStart = await resolveNote(startFile, startPath);
 
   if (!resolvedStart && startFile) {
-    // Fallback 1: maybe it's a folder name → find newest .md file in it
     resolvedStart = await resolveViaFolder(startFile);
   }
 
   if (!resolvedStart && startFile) {
-    // Fallback 2: search vault for matching notes
     resolvedStart = await resolveViaSearch(startFile);
   }
 
@@ -64,21 +71,15 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
 
   // Walk backwards through Vorausgegangen chain
   while (true) {
-    // Resolve current note
     const info = await resolveNote(currentFile, currentPath);
     if (!info) break;
 
-    // Prevent infinite loops
     if (visited.has(info.path)) break;
     visited.add(info.path);
 
-    // Get date
-    let datum: string | undefined;
-    try {
-      datum = (await exec('property:read', { name: 'Datum', path: info.path })).trim() || undefined;
-    } catch { /* no date */ }
-
-    chain.unshift({ title: info.name, path: info.path, datum });
+    // Collect all metadata for this note in parallel
+    const entry = await enrichChainEntry(info.name, info.path);
+    chain.unshift(entry);
 
     // Get predecessor
     let predecessor: string | undefined;
@@ -89,19 +90,17 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
 
     if (!predecessor) break;
 
-    // Set up next iteration — predecessor is a file name (from wikilink)
     currentFile = predecessor;
     currentPath = undefined;
   }
 
-  // 2. Collect outgoing links from all chain notes
+  // 2. Collect outgoing links and backlinks from all chain notes (in parallel)
   const chainPaths = new Set(chain.map((c) => c.path));
   const allLinks = new Set<string>();
   const allBacklinks = new Set<string>();
 
   await Promise.all(
     chain.map(async (entry) => {
-      // Outgoing links
       try {
         const linksOutput = await exec('links', { path: entry.path });
         for (const line of linksOutput.split('\n')) {
@@ -112,7 +111,6 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
         }
       } catch { /* no links */ }
 
-      // Backlinks
       try {
         const backlinksOutput = await exec('backlinks', { path: entry.path });
         for (const line of backlinksOutput.split('\n')) {
@@ -130,6 +128,56 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
     links: [...allLinks].sort(),
     backlinks: [...allBacklinks].sort(),
   }, null, 2);
+}
+
+/**
+ * Enrich a chain entry with file info, properties, and outline — all in parallel.
+ */
+async function enrichChainEntry(name: string, notePath: string): Promise<ChainEntry> {
+  const entry: ChainEntry = {
+    title: name,
+    path: notePath,
+    folder: notePath.includes('/') ? notePath.substring(0, notePath.lastIndexOf('/')) : '',
+  };
+
+  // Fire all metadata queries in parallel
+  const [fileInfo, datum, inhalt, teilnehmer, tags, outline] = await Promise.all([
+    exec('file', { path: notePath }).catch(() => ''),
+    exec('property:read', { name: 'Datum', path: notePath }).catch(() => ''),
+    exec('property:read', { name: 'Inhalt', path: notePath }).catch(() => ''),
+    exec('property:read', { name: 'Teilnehmer', path: notePath }).catch(() => ''),
+    exec('property:read', { name: 'tags', path: notePath }).catch(() => ''),
+    exec('outline', { path: notePath }).catch(() => ''),
+  ]);
+
+  // Parse file info (tab-separated key-value)
+  if (fileInfo) {
+    const parsed: Record<string, string> = {};
+    for (const line of fileInfo.split('\n')) {
+      const [key, ...rest] = line.split('\t');
+      if (key && rest.length > 0) parsed[key] = rest.join('\t');
+    }
+    if (parsed.size) entry.size = parseInt(parsed.size);
+    if (parsed.created) entry.created = parseInt(parsed.created);
+    if (parsed.modified) entry.modified = parseInt(parsed.modified);
+  }
+
+  if (datum.trim()) entry.datum = datum.trim();
+  if (inhalt.trim()) entry.inhalt = inhalt.trim();
+
+  if (teilnehmer.trim()) {
+    entry.teilnehmer = teilnehmer.trim().split('\n')
+      .map((t) => t.trim()).filter((t) => t.length > 0);
+  }
+
+  if (tags.trim()) {
+    entry.tags = tags.trim().split('\n')
+      .map((t) => t.trim()).filter((t) => t.length > 0);
+  }
+
+  if (outline.trim()) entry.outline = outline.trim();
+
+  return entry;
 }
 
 async function resolveNote(
@@ -158,17 +206,12 @@ async function resolveNote(
   }
 }
 
-/**
- * Fallback: input might be a folder name. Search all folders, find the matching one,
- * then pick the newest .md file inside it.
- */
 async function resolveViaFolder(input: string): Promise<{ name: string; path: string } | null> {
   try {
     const foldersOutput = await exec('folders');
     const allFolders = foldersOutput.split('\n').filter((f) => f && f !== '/');
     const inputLower = input.toLowerCase();
 
-    // Find folders whose last segment matches the input
     const matches = allFolders.filter((f) => {
       const last = f.split('/').pop()!.toLowerCase();
       return last.includes(inputLower);
@@ -176,14 +219,12 @@ async function resolveViaFolder(input: string): Promise<{ name: string; path: st
 
     if (matches.length === 0) return null;
 
-    // Use first matching folder, list its .md files
     const folder = matches[0];
     const filesOutput = await exec('files', { folder, ext: 'md' });
     const files = filesOutput.split('\n').filter((f) => f.trim());
 
     if (files.length === 0) return null;
 
-    // Pick the last file (typically newest by name with dates)
     const lastFile = files[files.length - 1];
     return await resolveNote(undefined, lastFile);
   } catch {
@@ -191,10 +232,6 @@ async function resolveViaFolder(input: string): Promise<{ name: string; path: st
   }
 }
 
-/**
- * Fallback: search vault for notes matching the input.
- * Picks the first .md result.
- */
 async function resolveViaSearch(input: string): Promise<{ name: string; path: string } | null> {
   try {
     const searchOutput = await exec('search', { query: input, limit: '5' });
@@ -208,10 +245,8 @@ async function resolveViaSearch(input: string): Promise<{ name: string; path: st
 
 function extractWikilink(text: string): string | undefined {
   if (!text) return undefined;
-  // Match [[link]] or [[link|alias]]
   const match = text.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
   if (match) return match[1].trim();
-  // If no wikilink syntax, treat as plain text reference
   if (text.length > 0 && !text.startsWith('Error')) return text;
   return undefined;
 }
