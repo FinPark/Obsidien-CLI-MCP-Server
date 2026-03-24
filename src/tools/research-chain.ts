@@ -24,20 +24,6 @@ This gives a complete overview of a topic's history and related context.`,
   },
 };
 
-interface ChainEntry {
-  title: string;
-  path: string;
-  folder: string;
-  datum?: string;
-  inhalt?: string;
-  teilnehmer?: string[];
-  tags?: string[];
-  size?: number;
-  created?: number;
-  modified?: number;
-  outline?: string;
-}
-
 export async function handleResearchChain(args: Record<string, unknown>): Promise<string> {
   const startFile = args.file as string | undefined;
   const startPath = args.path as string | undefined;
@@ -46,7 +32,7 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
     return JSON.stringify({ error: 'file oder path ist erforderlich.' });
   }
 
-  // 1. Resolve starting note — with fallback strategies
+  // Resolve starting note
   let resolvedStart = await resolveNote(startFile, startPath);
 
   if (!resolvedStart && startFile) {
@@ -64,120 +50,117 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
     });
   }
 
-  const chain: ChainEntry[] = [];
-  const visited = new Set<string>();
-  let currentFile: string | undefined = undefined;
-  let currentPath: string | undefined = resolvedStart.path;
+  // Single eval call that does ALL the work inside Obsidian — no 370 CLI calls
+  const code = `
+(function() {
+  const startPath = ${JSON.stringify(resolvedStart.path)};
+  const vault = app.vault;
+  const cache = app.metadataCache;
 
-  // Walk backwards through Vorausgegangen chain
-  while (true) {
-    const info = await resolveNote(currentFile, currentPath);
-    if (!info) break;
+  function getFile(p) { return vault.getAbstractFileByPath(p); }
+  function getMeta(f) { return f ? cache.getFileCache(f) : null; }
+  function getFm(f) { const m = getMeta(f); return m?.frontmatter || {}; }
 
-    if (visited.has(info.path)) break;
-    visited.add(info.path);
-
-    // Collect all metadata for this note in parallel
-    const entry = await enrichChainEntry(info.name, info.path);
-    chain.unshift(entry);
-
-    // Get predecessor
-    let predecessor: string | undefined;
-    try {
-      const raw = await exec('property:read', { name: 'Vorausgegangen', path: info.path });
-      predecessor = extractWikilink(raw.trim());
-    } catch { /* no predecessor */ }
-
-    if (!predecessor) break;
-
-    currentFile = predecessor;
-    currentPath = undefined;
+  function resolveLink(linkText) {
+    if (!linkText) return null;
+    const match = linkText.match(/\\[\\[([^\\]|]+)/);
+    const name = match ? match[1].trim() : linkText.trim();
+    if (!name) return null;
+    const found = vault.getMarkdownFiles().find(f => f.basename === name);
+    return found || null;
   }
 
-  // 2. Collect outgoing links and backlinks from all chain notes (in parallel)
-  const chainPaths = new Set(chain.map((c) => c.path));
-  const allLinks = new Set<string>();
-  const allBacklinks = new Set<string>();
+  function getOutline(f) {
+    const m = getMeta(f);
+    if (!m?.headings) return '';
+    return m.headings.map(h => '  '.repeat(h.level - 1) + '#'.repeat(h.level) + ' ' + h.heading).join('\\n');
+  }
 
-  await Promise.all(
-    chain.map(async (entry) => {
-      try {
-        const linksOutput = await exec('links', { path: entry.path });
-        for (const line of linksOutput.split('\n')) {
-          const link = line.trim();
-          if (link && !chainPaths.has(link)) {
-            allLinks.add(link);
-          }
-        }
-      } catch { /* no links */ }
+  function getLinks(f) {
+    const m = getMeta(f);
+    const links = [];
+    if (m?.links) {
+      for (const l of m.links) {
+        const resolved = cache.getFirstLinkpathDest(l.link, f.path);
+        if (resolved) links.push(resolved.path);
+      }
+    }
+    return links;
+  }
 
-      try {
-        const backlinksOutput = await exec('backlinks', { path: entry.path });
-        for (const line of backlinksOutput.split('\n')) {
-          const bl = line.trim();
-          if (bl && !chainPaths.has(bl) && bl.includes('.md')) {
-            allBacklinks.add(bl);
-          }
-        }
-      } catch { /* no backlinks */ }
-    }),
-  );
+  function getBacklinks(f) {
+    const bl = cache.getBacklinksForFile(f);
+    return bl?.data ? [...bl.data.keys()] : [];
+  }
+
+  // Walk the chain backwards
+  const chain = [];
+  const visited = new Set();
+  let currentFile = getFile(startPath);
+
+  while (currentFile) {
+    if (visited.has(currentFile.path)) break;
+    visited.add(currentFile.path);
+
+    const fm = getFm(currentFile);
+    const teilnehmer = fm.Teilnehmer || fm.teilnehmer || [];
+    const tags = fm.tags || [];
+
+    chain.unshift({
+      title: currentFile.basename,
+      path: currentFile.path,
+      folder: currentFile.parent ? currentFile.parent.path : '',
+      datum: fm.Datum || fm.datum || undefined,
+      inhalt: fm.Inhalt || fm.inhalt || undefined,
+      teilnehmer: Array.isArray(teilnehmer) ? teilnehmer : [teilnehmer],
+      tags: Array.isArray(tags) ? tags : [tags],
+      size: currentFile.stat?.size,
+      created: currentFile.stat?.ctime,
+      modified: currentFile.stat?.mtime,
+      outline: getOutline(currentFile),
+    });
+
+    // Follow predecessor
+    const prev = fm.Vorausgegangen || fm.vorausgegangen;
+    if (!prev) break;
+    currentFile = resolveLink(prev);
+  }
+
+  // Collect links and backlinks
+  const chainPaths = new Set(chain.map(c => c.path));
+  const allLinks = new Set();
+  const allBacklinks = new Set();
+
+  for (const entry of chain) {
+    const f = getFile(entry.path);
+    if (!f) continue;
+
+    for (const l of getLinks(f)) {
+      if (!chainPaths.has(l)) allLinks.add(l);
+    }
+    for (const bl of getBacklinks(f)) {
+      if (!chainPaths.has(bl) && bl.endsWith('.md')) allBacklinks.add(bl);
+    }
+  }
 
   return JSON.stringify({
-    chain,
+    chain: chain,
     links: [...allLinks].sort(),
     backlinks: [...allBacklinks].sort(),
-  }, null, 2);
-}
+  });
+})()
+  `.trim();
 
-/**
- * Enrich a chain entry with file info, properties, and outline — all in parallel.
- */
-async function enrichChainEntry(name: string, notePath: string): Promise<ChainEntry> {
-  const entry: ChainEntry = {
-    title: name,
-    path: notePath,
-    folder: notePath.includes('/') ? notePath.substring(0, notePath.lastIndexOf('/')) : '',
-  };
-
-  // Fire all metadata queries in parallel
-  const [fileInfo, datum, inhalt, teilnehmer, tags, outline] = await Promise.all([
-    exec('file', { path: notePath }).catch(() => ''),
-    exec('property:read', { name: 'Datum', path: notePath }).catch(() => ''),
-    exec('property:read', { name: 'Inhalt', path: notePath }).catch(() => ''),
-    exec('property:read', { name: 'Teilnehmer', path: notePath }).catch(() => ''),
-    exec('property:read', { name: 'tags', path: notePath }).catch(() => ''),
-    exec('outline', { path: notePath }).catch(() => ''),
-  ]);
-
-  // Parse file info (tab-separated key-value)
-  if (fileInfo) {
-    const parsed: Record<string, string> = {};
-    for (const line of fileInfo.split('\n')) {
-      const [key, ...rest] = line.split('\t');
-      if (key && rest.length > 0) parsed[key] = rest.join('\t');
-    }
-    if (parsed.size) entry.size = parseInt(parsed.size);
-    if (parsed.created) entry.created = parseInt(parsed.created);
-    if (parsed.modified) entry.modified = parseInt(parsed.modified);
+  try {
+    const result = await exec('eval', { code });
+    // eval returns stringified JSON, parse and re-format
+    const parsed = JSON.parse(result);
+    return JSON.stringify(parsed, null, 2);
+  } catch (err) {
+    return JSON.stringify({
+      error: `research_chain fehlgeschlagen: ${err instanceof Error ? err.message : err}`,
+    });
   }
-
-  if (datum.trim()) entry.datum = datum.trim();
-  if (inhalt.trim()) entry.inhalt = inhalt.trim();
-
-  if (teilnehmer.trim()) {
-    entry.teilnehmer = teilnehmer.trim().split('\n')
-      .map((t) => t.trim()).filter((t) => t.length > 0);
-  }
-
-  if (tags.trim()) {
-    entry.tags = tags.trim().split('\n')
-      .map((t) => t.trim()).filter((t) => t.length > 0);
-  }
-
-  if (outline.trim()) entry.outline = outline.trim();
-
-  return entry;
 }
 
 async function resolveNote(
@@ -241,12 +224,4 @@ async function resolveViaSearch(input: string): Promise<{ name: string; path: st
   } catch {
     return null;
   }
-}
-
-function extractWikilink(text: string): string | undefined {
-  if (!text) return undefined;
-  const match = text.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
-  if (match) return match[1].trim();
-  if (text.length > 0 && !text.startsWith('Error')) return text;
-  return undefined;
 }
