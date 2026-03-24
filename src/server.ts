@@ -13,6 +13,7 @@ import { rebuildIndexSchema, handleRebuildIndex } from './tools/rebuild-index.js
 import { createNoteSchema, handleCreateNote } from './tools/create-note.js';
 import { listFoldersSchema, handleListFolders } from './tools/list-folders.js';
 import { moveNoteSchema, handleMoveNote } from './tools/move-note.js';
+import { updateTagsSchema, handleUpdateTags, renameTagSchema, handleRenameTag, deleteTagSchema, handleDeleteTag } from './tools/manage-tags.js';
 
 export type ToolHandler = (args: Record<string, unknown>, server: Server) => string | Promise<string>;
 
@@ -26,6 +27,9 @@ const tools = [
   createNoteSchema,
   listFoldersSchema,
   moveNoteSchema,
+  updateTagsSchema,
+  renameTagSchema,
+  deleteTagSchema,
 ];
 
 const handlers: Record<string, ToolHandler> = {
@@ -38,6 +42,9 @@ const handlers: Record<string, ToolHandler> = {
   create_note: handleCreateNote,
   list_folders: handleListFolders,
   move_note: handleMoveNote,
+  update_tags: handleUpdateTags,
+  rename_tag: handleRenameTag,
+  delete_tag: handleDeleteTag,
 };
 
 export function createServer(): Server {

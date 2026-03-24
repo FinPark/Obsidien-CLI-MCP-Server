@@ -178,17 +178,18 @@ export function indexSingleFile(relativePath: string): void {
   const title = getTitle(relativePath);
   const folder = getFolder(relativePath);
 
-  // Clean up old relations BEFORE replace (avoids FOREIGN KEY errors)
+  // Clean up old entry completely before inserting new one
   const existingRow = db.prepare('SELECT id FROM notes WHERE path = ?').get(relativePath) as { id: number } | undefined;
   if (existingRow) {
     db.prepare('DELETE FROM note_participants WHERE note_id = ?').run(existingRow.id);
     db.prepare('DELETE FROM note_tags WHERE note_id = ?').run(existingRow.id);
     db.prepare('DELETE FROM note_art WHERE note_id = ?').run(existingRow.id);
     db.prepare('DELETE FROM notes_fts WHERE rowid = ?').run(existingRow.id);
+    db.prepare('DELETE FROM notes WHERE id = ?').run(existingRow.id);
   }
 
   db.prepare(`
-    INSERT OR REPLACE INTO notes (path, title, datum, uhrzeit, ort, organisator, inhalt, vorausgegangen, body, folder, mtime)
+    INSERT INTO notes (path, title, datum, uhrzeit, ort, organisator, inhalt, vorausgegangen, body, folder, mtime)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     relativePath, title, parsed.datum, parsed.uhrzeit, parsed.ort,

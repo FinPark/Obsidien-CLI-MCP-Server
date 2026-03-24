@@ -1,6 +1,6 @@
 # Obsidian Vault MCP Server
 
-A Model Context Protocol (MCP) server that indexes an Obsidian vault into a SQLite/FTS5 database and exposes 9 tools for searching, reading, and managing notes. The server uses the StreamableHTTP transport with per-session management and requires no Supergateway dependency.
+A Model Context Protocol (MCP) server that indexes an Obsidian vault into a SQLite/FTS5 database and exposes 12 tools for searching, reading, and managing notes. The server uses the StreamableHTTP transport with per-session management and requires no Supergateway dependency.
 
 ## Features
 
@@ -8,7 +8,7 @@ A Model Context Protocol (MCP) server that indexes an Obsidian vault into a SQLi
 - **YAML frontmatter parsing** for structured metadata: Datum, Uhrzeit, Ort, Organisator, Teilnehmer, tags, Inhalt, Art, Vorausgegangen
 - **Delta indexing on startup** — compares mtime values, only re-indexes changed files
 - **Live file watcher** (chokidar) for real-time index updates when notes change on disk
-- **9 MCP tools** covering search, read, write, and vault management
+- **12 MCP tools** covering search, read, write, tag management, and vault operations
 - **MCP Elicitation support** for interactive user forms, confirmations, and dropdown selections
 - **Smart folder resolution** with multi-word matching and disambiguation via user interaction
 - **StreamableHTTP server** on port 8201 with full session lifecycle (create, reuse, terminate)
@@ -185,6 +185,35 @@ List all folders in the vault with optional name filter. Note: do not use this t
 |-----------|--------|------------------------------------------------|
 | `query`   | string | Optional filter (partial, case-insensitive)    |
 
+### `update_tags`
+
+Add or remove tags on one or more notes by modifying their YAML frontmatter directly. Supports hierarchical tags (e.g. `AI/MCP`) and both array and inline tag formats.
+
+| Parameter    | Type     | Description                                          |
+|--------------|----------|------------------------------------------------------|
+| `paths`      | string[] | Relative vault paths of notes to modify (required)   |
+| `addTags`    | string[] | Tags to add (e.g. `["AI/MCP", "Knowledge"]`)         |
+| `removeTags` | string[] | Tags to remove (exact match, case-sensitive)         |
+
+Re-indexes each modified note immediately after writing.
+
+### `rename_tag`
+
+Rename a tag across all notes in the vault. Queries the index to find affected notes and updates their YAML frontmatter. If more than 5 notes are affected, an elicitation confirmation is requested before proceeding.
+
+| Parameter | Type   | Description                              |
+|-----------|--------|------------------------------------------|
+| `oldTag`  | string | Current tag name (exact match)           |
+| `newTag`  | string | New tag name (hierarchical paths allowed) |
+
+### `delete_tag`
+
+Remove a tag from all notes in the vault. Always requests elicitation confirmation before deleting, regardless of the number of affected notes. The notes themselves are not deleted.
+
+| Parameter | Type   | Description                     |
+|-----------|--------|---------------------------------|
+| `tag`     | string | Tag to delete (exact match)     |
+
 ## Database Schema
 
 The SQLite database (`data/obsidian.db`) has the following structure:
@@ -224,6 +253,7 @@ src/
     create-note.ts      # create_note tool with elicitation
     move-note.ts        # move_note tool with elicitation + smart matching
     list-folders.ts
+    manage-tags.ts      # update_tags, rename_tag, delete_tag tools
     elicitation.ts      # tryElicit helper (timeout, error handling)
 data/
   obsidian.db           # SQLite database (not committed)

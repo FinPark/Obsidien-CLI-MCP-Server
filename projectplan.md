@@ -4,7 +4,7 @@
 
 Build a production-ready MCP server that indexes an Obsidian vault into SQLite/FTS5 and exposes structured query tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: v1.1.0 – Tool UX Improvements
+## Status: v1.2.0 – Tag Management Tools
 
 Date: 2026-03-24
 
@@ -47,7 +47,7 @@ Date: 2026-03-24
 - [x] Graceful shutdown on SIGINT/SIGTERM: closes all sessions, stops HTTP, closes DB
 - [x] Configurable port via `PORT` env variable (default: 8201)
 
-### M5 — MCP Tools (9 total)
+### M5 — MCP Tools (12 total)
 - [x] `search_notes` — FTS5 + structured filters (date range, participants, tags, art, folder), sorted by relevance or date
 - [x] `read_note` — full note content by relative path; accepts `paths` array for bulk reads in a single call
 - [x] `list_participants` — all participants with frequency, optional filter
@@ -57,6 +57,9 @@ Date: 2026-03-24
 - [x] `create_note` — creates note in `📥 Inbox` with elicitation form for metadata
 - [x] `move_note` — moves note between folders with smart resolution and confirmation
 - [x] `list_folders` — lists all vault folders with optional filter
+- [x] `update_tags` — add/remove tags on specific notes; modifies YAML frontmatter directly; supports hierarchical tags and array/inline formats
+- [x] `rename_tag` — rename a tag across all notes in the vault; elicitation confirmation when more than 5 notes affected
+- [x] `delete_tag` — remove a tag from all notes; always requires elicitation confirmation
 
 ### M6 — MCP Elicitation
 - [x] `tryElicit` helper with 60-second timeout
@@ -89,6 +92,13 @@ Date: 2026-03-24
 
 ### M10 — Tool UX Improvements (v1.1.0)
 - [x] `read_note` description strengthened: explicit IMPORTANT hint to always pass all paths in a single array call rather than calling once per note; prevents unnecessary round trips in AI-driven workflows
+
+### M11 — Tag Management Tools (v1.2.0)
+- [x] `update_tags` tool: add/remove tags on one or more notes in a single call; handles array format, inline `[a, b]` format, and single-value tags; re-indexes each note after write
+- [x] `rename_tag` tool: renames a tag vault-wide using the SQLite index to find affected notes efficiently; elicitation confirmation for bulk changes (> 5 notes)
+- [x] `delete_tag` tool: removes a tag vault-wide with mandatory elicitation confirmation regardless of count
+- [x] `manage-tags.ts` helper: shared `modifyTags`, `parseTags`, `replaceTags` functions handling all YAML tag formats
+- [x] Fixed `SQLITE_CONSTRAINT_PRIMARYKEY` error in `indexSingleFile`: replaced `INSERT OR REPLACE INTO notes_fts` with explicit `DELETE FROM notes_fts WHERE rowid = ?` followed by `INSERT INTO notes_fts` to avoid FTS5 rowid conflicts on re-index
 
 ---
 
