@@ -1,9 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { VAULT_PATH } from '../config.js';
-import { getDb } from '../database/db.js';
-import { indexSingleFile } from '../indexer/indexer.js';
+import { exec, execJson } from '../cli/obsidian-cli.js';
 import { tryElicit } from './elicitation.js';
 
 // ─── update_tags: Add/remove tags on specific notes ───
@@ -11,8 +7,7 @@ import { tryElicit } from './elicitation.js';
 export const updateTagsSchema = {
   name: 'update_tags',
   description: `Add or remove tags on one or more Obsidian notes.
-Modifies the YAML frontmatter tags array directly in the .md files.
-Tags support hierarchical paths (e.g. "AI/MCP"). Case-sensitive.`,
+Modifies the tags property via Obsidian CLI. Tags support hierarchical paths (e.g. "AI/MCP").`,
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -33,7 +28,7 @@ Tags support hierarchical paths (e.g. "AI/MCP"). Case-sensitive.`,
   },
 };
 
-export function handleUpdateTags(args: Record<string, unknown>): string {
+export async function handleUpdateTags(args: Record<string, unknown>): Promise<string> {
   const paths = args.paths as string[];
   const addTags = (args.addTags as string[]) ?? [];
   const removeTags = (args.removeTags as string[]) ?? [];
@@ -45,18 +40,33 @@ export function handleUpdateTags(args: Record<string, unknown>): string {
   const results: Array<{ path: string; status: string; tags?: string[] }> = [];
 
   for (const notePath of paths) {
-    const absPath = path.join(VAULT_PATH, notePath);
-    if (!fs.existsSync(absPath)) {
-      results.push({ path: notePath, status: 'nicht gefunden' });
-      continue;
-    }
-
     try {
-      const content = fs.readFileSync(absPath, 'utf-8');
-      const updated = modifyTags(content, addTags, removeTags);
-      fs.writeFileSync(absPath, updated.content, 'utf-8');
-      indexSingleFile(notePath);
-      results.push({ path: notePath, status: 'aktualisiert', tags: updated.tags });
+      // Read current tags
+      let currentTagsRaw: string;
+      try {
+        currentTagsRaw = await exec('property:read', { name: 'tags', path: notePath });
+      } catch {
+        currentTagsRaw = '';
+      }
+
+      // Parse current tags (could be comma-separated or YAML list format)
+      const currentTags = parseTagsOutput(currentTagsRaw);
+
+      // Apply modifications
+      const tagSet = new Set(currentTags);
+      for (const t of removeTags) tagSet.delete(t);
+      for (const t of addTags) tagSet.add(t);
+      const newTags = [...tagSet];
+
+      // Set new tags via property:set
+      await exec('property:set', {
+        name: 'tags',
+        value: newTags.join(', '),
+        type: 'list',
+        path: notePath,
+      });
+
+      results.push({ path: notePath, status: 'aktualisiert', tags: newTags });
     } catch (err) {
       results.push({ path: notePath, status: `Fehler: ${err instanceof Error ? err.message : err}` });
     }
@@ -85,29 +95,27 @@ Example: rename "Analyse" to "Analysis" or "AI" to "AI/General".`,
 export async function handleRenameTag(args: Record<string, unknown>, server: Server): Promise<string> {
   const oldTag = args.oldTag as string;
   const newTag = args.newTag as string;
-  const db = getDb();
 
-  // Find all notes with this tag
-  const notes = db.prepare(
-    'SELECT n.path FROM notes n JOIN note_tags t ON t.note_id = n.id WHERE t.tag = ?'
-  ).all(oldTag) as Array<{ path: string }>;
+  // Find all files with this tag via CLI
+  const tagInfo = await exec('tag', { name: oldTag }, ['verbose']);
+  const files = parseTagVerboseOutput(tagInfo);
 
-  if (notes.length === 0) {
+  if (files.length === 0) {
     return JSON.stringify({ error: `Tag "${oldTag}" nicht gefunden.` });
   }
 
   // Confirm if many notes affected
-  if (notes.length > 5) {
+  if (files.length > 5) {
     const confirmed = await tryElicit(server, {
       mode: 'form',
-      message: `Tag "${oldTag}" → "${newTag}" in ${notes.length} Notizen umbenennen?`,
+      message: `Tag "${oldTag}" → "${newTag}" in ${files.length} Notizen umbenennen?`,
       requestedSchema: {
         type: 'object',
         properties: {
           confirm: {
             type: 'boolean',
             title: 'Umbenennung bestätigen',
-            description: `${notes.length} Notizen werden geändert`,
+            description: `${files.length} Notizen werden geändert`,
             default: true,
           },
         },
@@ -122,13 +130,29 @@ export async function handleRenameTag(args: Record<string, unknown>, server: Ser
   let updated = 0;
   let errors = 0;
 
-  for (const note of notes) {
-    const absPath = path.join(VAULT_PATH, note.path);
+  for (const filePath of files) {
     try {
-      const content = fs.readFileSync(absPath, 'utf-8');
-      const result = modifyTags(content, [newTag], [oldTag]);
-      fs.writeFileSync(absPath, result.content, 'utf-8');
-      indexSingleFile(note.path);
+      // Read current tags
+      let currentTagsRaw: string;
+      try {
+        currentTagsRaw = await exec('property:read', { name: 'tags', path: filePath });
+      } catch {
+        currentTagsRaw = '';
+      }
+      const currentTags = parseTagsOutput(currentTagsRaw);
+
+      // Replace old tag with new tag
+      const tagSet = new Set(currentTags);
+      tagSet.delete(oldTag);
+      tagSet.add(newTag);
+      const newTags = [...tagSet];
+
+      await exec('property:set', {
+        name: 'tags',
+        value: newTags.join(', '),
+        type: 'list',
+        path: filePath,
+      });
       updated++;
     } catch {
       errors++;
@@ -159,27 +183,25 @@ Removes the tag from every note's YAML frontmatter. The notes themselves are not
 
 export async function handleDeleteTag(args: Record<string, unknown>, server: Server): Promise<string> {
   const tag = args.tag as string;
-  const db = getDb();
 
-  const notes = db.prepare(
-    'SELECT n.path FROM notes n JOIN note_tags t ON t.note_id = n.id WHERE t.tag = ?'
-  ).all(tag) as Array<{ path: string }>;
+  const tagInfo = await exec('tag', { name: tag }, ['verbose']);
+  const files = parseTagVerboseOutput(tagInfo);
 
-  if (notes.length === 0) {
+  if (files.length === 0) {
     return JSON.stringify({ error: `Tag "${tag}" nicht gefunden.` });
   }
 
   // Always confirm deletion
   const confirmed = await tryElicit(server, {
     mode: 'form',
-    message: `Tag "${tag}" aus ${notes.length} Notizen entfernen?`,
+    message: `Tag "${tag}" aus ${files.length} Notizen entfernen?`,
     requestedSchema: {
       type: 'object',
       properties: {
         confirm: {
           type: 'boolean',
           title: 'Löschung bestätigen',
-          description: `"${tag}" wird aus ${notes.length} Notizen entfernt`,
+          description: `"${tag}" wird aus ${files.length} Notizen entfernt`,
           default: true,
         },
       },
@@ -193,13 +215,26 @@ export async function handleDeleteTag(args: Record<string, unknown>, server: Ser
   let updated = 0;
   let errors = 0;
 
-  for (const note of notes) {
-    const absPath = path.join(VAULT_PATH, note.path);
+  for (const filePath of files) {
     try {
-      const content = fs.readFileSync(absPath, 'utf-8');
-      const result = modifyTags(content, [], [tag]);
-      fs.writeFileSync(absPath, result.content, 'utf-8');
-      indexSingleFile(note.path);
+      let currentTagsRaw: string;
+      try {
+        currentTagsRaw = await exec('property:read', { name: 'tags', path: filePath });
+      } catch {
+        currentTagsRaw = '';
+      }
+      const currentTags = parseTagsOutput(currentTagsRaw);
+
+      const tagSet = new Set(currentTags);
+      tagSet.delete(tag);
+      const newTags = [...tagSet];
+
+      await exec('property:set', {
+        name: 'tags',
+        value: newTags.join(', '),
+        type: 'list',
+        path: filePath,
+      });
       updated++;
     } catch {
       errors++;
@@ -213,136 +248,21 @@ export async function handleDeleteTag(args: Record<string, unknown>, server: Ser
   }, null, 2);
 }
 
-// ─── Helper: Modify tags in a markdown file's frontmatter ───
+// ─── Helpers ───
 
-function modifyTags(
-  content: string,
-  addTags: string[],
-  removeTags: string[]
-): { content: string; tags: string[] } {
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-  if (!fmMatch) {
-    // No frontmatter — add one with the new tags
-    const tags = addTags.filter(t => !removeTags.includes(t));
-    const tagsYaml = tags.length > 0
-      ? `tags:\n${tags.map(t => `  - ${t}`).join('\n')}`
-      : 'tags:';
-    return {
-      content: `---\n${tagsYaml}\n---\n\n${content}`,
-      tags,
-    };
+function parseTagsOutput(output: string): string[] {
+  if (!output.trim()) return [];
+  // Output could be: "tag1, tag2, tag3" or "tag1\ntag2\ntag3" or single value
+  if (output.includes(',')) {
+    return output.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
   }
-
-  const frontmatter = fmMatch[1];
-  const body = fmMatch[2];
-
-  // Parse existing tags from frontmatter
-  const existingTags = parseTags(frontmatter);
-
-  // Apply modifications
-  const tagSet = new Set(existingTags);
-  for (const t of removeTags) tagSet.delete(t);
-  for (const t of addTags) tagSet.add(t);
-  const newTags = [...tagSet];
-
-  // Replace tags in frontmatter
-  const newFrontmatter = replaceTags(frontmatter, newTags);
-
-  return {
-    content: `---\n${newFrontmatter}\n---\n${body}`,
-    tags: newTags,
-  };
+  return output.split('\n').map((t) => t.trim()).filter((t) => t.length > 0);
 }
 
-function parseTags(frontmatter: string): string[] {
-  const tags: string[] = [];
-  const lines = frontmatter.split('\n');
-  let inTags = false;
-
-  for (const line of lines) {
-    // Inline array: tags: [tag1, tag2]
-    const inlineMatch = line.match(/^tags:\s*\[([^\]]*)\]/);
-    if (inlineMatch) {
-      return inlineMatch[1].split(',').map(t => t.trim()).filter(t => t.length > 0);
-    }
-
-    // Start of tags block
-    if (/^tags:\s*$/.test(line)) {
-      inTags = true;
-      continue;
-    }
-
-    // tags: with value on same line (single tag)
-    const singleMatch = line.match(/^tags:\s+(.+)$/);
-    if (singleMatch && !singleMatch[1].startsWith('[')) {
-      return [singleMatch[1].trim()];
-    }
-
-    if (inTags) {
-      const itemMatch = line.match(/^\s+-\s+(.+)$/);
-      if (itemMatch) {
-        tags.push(itemMatch[1].trim());
-      } else if (/^\S/.test(line)) {
-        // Next property — tags block ended
-        break;
-      }
-    }
-  }
-
-  return tags;
-}
-
-function replaceTags(frontmatter: string, newTags: string[]): string {
-  const lines = frontmatter.split('\n');
-  const result: string[] = [];
-  let inTags = false;
-  let tagsInserted = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Inline array: tags: [...]
-    if (/^tags:\s*\[/.test(line)) {
-      if (newTags.length > 0) {
-        result.push('tags:');
-        for (const t of newTags) result.push(`  - ${t}`);
-      } else {
-        result.push('tags:');
-      }
-      tagsInserted = true;
-      continue;
-    }
-
-    // Start of tags block or single-value tags
-    if (/^tags:/.test(line)) {
-      if (newTags.length > 0) {
-        result.push('tags:');
-        for (const t of newTags) result.push(`  - ${t}`);
-      } else {
-        result.push('tags:');
-      }
-      inTags = true;
-      tagsInserted = true;
-      continue;
-    }
-
-    if (inTags) {
-      if (/^\s+-\s/.test(line)) {
-        // Skip old tag items
-        continue;
-      }
-      // Next property
-      inTags = false;
-    }
-
-    result.push(line);
-  }
-
-  // If no tags field existed, add it
-  if (!tagsInserted) {
-    result.push('tags:');
-    for (const t of newTags) result.push(`  - ${t}`);
-  }
-
-  return result.join('\n');
+function parseTagVerboseOutput(output: string): string[] {
+  // verbose output lists file paths, one per line
+  // First line might be count info, rest are paths
+  const lines = output.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  // Filter out lines that look like counts/stats and keep file paths
+  return lines.filter((l) => l.includes('.md') || l.includes('/'));
 }

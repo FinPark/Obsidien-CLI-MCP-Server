@@ -9,11 +9,16 @@ import { readNoteSchema, handleReadNote } from './tools/read-note.js';
 import { listParticipantsSchema, handleListParticipants } from './tools/list-participants.js';
 import { listTagsSchema, handleListTags } from './tools/list-tags.js';
 import { vaultStatsSchema, handleVaultStats } from './tools/vault-stats.js';
-import { rebuildIndexSchema, handleRebuildIndex } from './tools/rebuild-index.js';
 import { createNoteSchema, handleCreateNote } from './tools/create-note.js';
 import { listFoldersSchema, handleListFolders } from './tools/list-folders.js';
 import { moveNoteSchema, handleMoveNote } from './tools/move-note.js';
 import { updateTagsSchema, handleUpdateTags, renameTagSchema, handleRenameTag, deleteTagSchema, handleDeleteTag } from './tools/manage-tags.js';
+import { listTasksSchema, handleListTasks, toggleTaskSchema, handleToggleTask } from './tools/tasks.js';
+import { listBacklinksSchema, handleListBacklinks, listLinksSchema, handleListLinks, listOrphansSchema, handleListOrphans, listDeadendsSchema, handleListDeadends, listUnresolvedSchema, handleListUnresolved } from './tools/links.js';
+import { listPropertiesSchema, handleListProperties, getPropertySchema, handleGetProperty, setPropertySchema, handleSetProperty, removePropertySchema, handleRemoveProperty } from './tools/properties.js';
+import { getOutlineSchema, handleGetOutline } from './tools/outline.js';
+import { appendNoteSchema, handleAppendNote, prependNoteSchema, handlePrependNote, renameNoteSchema, handleRenameNote, deleteNoteSchema, handleDeleteNote, fileInfoSchema, handleFileInfo, listFilesSchema, handleListFiles, listRecentsSchema, handleListRecents } from './tools/note-management.js';
+import { researchChainSchema, handleResearchChain } from './tools/research-chain.js';
 
 export type ToolHandler = (args: Record<string, unknown>, server: Server) => string | Promise<string>;
 
@@ -23,13 +28,38 @@ const tools = [
   listParticipantsSchema,
   listTagsSchema,
   vaultStatsSchema,
-  rebuildIndexSchema,
   createNoteSchema,
   listFoldersSchema,
   moveNoteSchema,
   updateTagsSchema,
   renameTagSchema,
   deleteTagSchema,
+  // Tasks
+  listTasksSchema,
+  toggleTaskSchema,
+  // Links
+  listBacklinksSchema,
+  listLinksSchema,
+  listOrphansSchema,
+  listDeadendsSchema,
+  listUnresolvedSchema,
+  // Properties
+  listPropertiesSchema,
+  getPropertySchema,
+  setPropertySchema,
+  removePropertySchema,
+  // Outline
+  getOutlineSchema,
+  // Note Management
+  appendNoteSchema,
+  prependNoteSchema,
+  renameNoteSchema,
+  deleteNoteSchema,
+  fileInfoSchema,
+  listFilesSchema,
+  listRecentsSchema,
+  // Research
+  researchChainSchema,
 ];
 
 const handlers: Record<string, ToolHandler> = {
@@ -38,18 +68,43 @@ const handlers: Record<string, ToolHandler> = {
   list_participants: handleListParticipants,
   list_tags: handleListTags,
   vault_stats: handleVaultStats,
-  rebuild_index: handleRebuildIndex,
   create_note: handleCreateNote,
   list_folders: handleListFolders,
   move_note: handleMoveNote,
   update_tags: handleUpdateTags,
   rename_tag: handleRenameTag,
   delete_tag: handleDeleteTag,
+  // Tasks
+  list_tasks: handleListTasks,
+  toggle_task: handleToggleTask,
+  // Links
+  list_backlinks: handleListBacklinks,
+  list_links: handleListLinks,
+  list_orphans: handleListOrphans,
+  list_deadends: handleListDeadends,
+  list_unresolved: handleListUnresolved,
+  // Properties
+  list_properties: handleListProperties,
+  get_property: handleGetProperty,
+  set_property: handleSetProperty,
+  remove_property: handleRemoveProperty,
+  // Outline
+  get_outline: handleGetOutline,
+  // Note Management
+  append_note: handleAppendNote,
+  prepend_note: handlePrependNote,
+  rename_note: handleRenameNote,
+  delete_note: handleDeleteNote,
+  file_info: handleFileInfo,
+  list_files: handleListFiles,
+  list_recents: handleListRecents,
+  // Research
+  research_chain: handleResearchChain,
 };
 
 export function createServer(): Server {
   const server = new Server(
-    { name: 'obsidian-vault', version: '1.0.0' },
+    { name: 'obsidian-vault', version: '2.0.0' },
     { capabilities: { tools: {} } }
   );
 

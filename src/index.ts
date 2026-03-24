@@ -3,21 +3,19 @@ import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from './server.js';
-import { buildIndex } from './indexer/indexer.js';
-import { startWatcher } from './indexer/watcher.js';
-import { closeDb } from './database/db.js';
+import { exec } from './cli/obsidian-cli.js';
 
 const PORT = parseInt(process.env.PORT || '8201', 10);
 
 async function main(): Promise<void> {
-  // Always run delta index: skips unchanged files (mtime check), picks up changes and deletions
-  console.error('[obsidian-mcp] Building index (delta)...');
-  const result = buildIndex();
-  console.error(`[obsidian-mcp] Index ready: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed`);
-
-  // Start file watcher
-  startWatcher();
-  console.error('[obsidian-mcp] File watcher started');
+  // Verify Obsidian CLI connectivity
+  try {
+    const version = await exec('version');
+    console.error(`[obsidian-mcp] Connected to Obsidian ${version}`);
+  } catch (err) {
+    console.error('[obsidian-mcp] WARNING: Could not connect to Obsidian CLI. Is Obsidian running?');
+    console.error(`[obsidian-mcp] ${err instanceof Error ? err.message : err}`);
+  }
 
   // Session management: one MCP server + transport per session
   const transports = new Map<string, StreamableHTTPServerTransport>();
@@ -44,7 +42,6 @@ async function main(): Promise<void> {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     if (req.method === 'GET') {
-      // SSE stream for existing session
       if (!sessionId || !transports.has(sessionId)) {
         res.writeHead(400);
         res.end('Invalid or missing session ID');
@@ -56,7 +53,6 @@ async function main(): Promise<void> {
     }
 
     if (req.method === 'DELETE') {
-      // Session termination
       if (sessionId && transports.has(sessionId)) {
         const transport = transports.get(sessionId)!;
         await transport.handleRequest(req, res);
@@ -69,7 +65,6 @@ async function main(): Promise<void> {
     }
 
     if (req.method === 'POST') {
-      // Parse body
       const body = await readBody(req);
       let parsed: unknown;
       try {
@@ -105,7 +100,6 @@ async function main(): Promise<void> {
           }
         };
 
-        // Create a new MCP server for this session
         const mcpServer = createServer();
         await mcpServer.connect(transport);
         await transport.handleRequest(req, res, parsed);
@@ -137,7 +131,6 @@ async function main(): Promise<void> {
       transports.delete(sid);
     }
     httpServer.close();
-    closeDb();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

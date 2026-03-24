@@ -1,8 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { VAULT_PATH, SKIP_DIRS } from '../config.js';
-import { indexSingleFile, removeFile } from '../indexer/indexer.js';
+import { exec } from '../cli/obsidian-cli.js';
 import { tryElicit } from './elicitation.js';
 
 export const moveNoteSchema = {
@@ -14,6 +11,8 @@ original wording and let this tool handle disambiguation via user interaction.
 IMPORTANT: Do NOT call list_folders first to pre-resolve the folder. Just pass the user's folder name directly.
 If multiple matches exist, the tool will ask the user to choose.
 The tool always asks the user for confirmation before moving.
+
+Uses Obsidian CLI's move command which automatically updates all internal links.
 
 - filename: partial match (e.g. "Chat" finds "Chat vom 2026-03-23.md")
 - sourceFolder: defaults to "📥 Inbox" if omitted
@@ -35,29 +34,11 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
   const destInput = args.destinationFolder as string;
   let userAlreadyInteracted = false;
 
-  // 1. Resolve source folder
-  const resolvedSource = resolveFolder(sourceFolder);
-  if (resolvedSource.length === 0) {
-    return JSON.stringify({ error: `Quellordner nicht gefunden: "${sourceFolder}"` });
-  }
-  let srcFolder: string;
-  if (resolvedSource.length > 1) {
-    const picked = await askUserToPick(server, 'folder', resolvedSource,
-      `Mehrere Quellordner für "${sourceFolder}" gefunden:`);
-    if (!picked) {
-      return JSON.stringify({
-        error: `Mehrere Quellordner für "${sourceFolder}" gefunden. Bitte genauer angeben:`,
-        candidates: resolvedSource,
-      }, null, 2);
-    }
-    srcFolder = picked;
-    userAlreadyInteracted = true;
-  } else {
-    srcFolder = resolvedSource[0];
-  }
+  // 1. Resolve destination folder via CLI folders listing
+  const foldersOutput = await exec('folders');
+  const allFolders = foldersOutput.split('\n').filter((f) => f && f !== '/');
 
-  // 2. Resolve destination folder
-  const resolvedDest = resolveFolder(destInput);
+  const resolvedDest = resolveFolder(allFolders, destInput);
   if (resolvedDest.length === 0) {
     return JSON.stringify({ error: `Zielordner nicht gefunden: "${destInput}"` });
   }
@@ -77,42 +58,43 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
     dstFolder = resolvedDest[0];
   }
 
-  // 3. Find the note file in source folder
-  const matchingFiles = findNoteInFolder(srcFolder, filename);
+  // 2. Find the note file in source folder
+  const filesOutput = await exec('files', { folder: sourceFolder, ext: 'md' });
+  const filesInFolder = filesOutput.split('\n').filter((f) => f.trim());
+  const filenameLower = filename.toLowerCase();
+  const matchingFiles = filesInFolder.filter((f) => {
+    const name = f.split('/').pop()?.replace('.md', '').toLowerCase() ?? '';
+    return name.includes(filenameLower);
+  });
+
   if (matchingFiles.length === 0) {
-    return JSON.stringify({ error: `Keine Notiz mit "${filename}" in "${srcFolder}" gefunden.` });
+    return JSON.stringify({ error: `Keine Notiz mit "${filename}" in "${sourceFolder}" gefunden.` });
   }
-  let noteFileName: string;
+  let notePath: string;
   if (matchingFiles.length > 1) {
-    const picked = await askUserToPick(server, 'note', matchingFiles.map(f => f.name),
+    const picked = await askUserToPick(server, 'note',
+      matchingFiles.map((f) => f.split('/').pop() ?? f),
       `Mehrere Notizen für "${filename}" gefunden:`);
     if (!picked) {
       return JSON.stringify({
         error: `Mehrere Notizen für "${filename}" gefunden. Bitte genauer angeben:`,
-        candidates: matchingFiles.map(f => f.name),
+        candidates: matchingFiles,
       }, null, 2);
     }
-    noteFileName = picked;
+    notePath = matchingFiles.find((f) => f.endsWith(picked)) ?? matchingFiles[0];
     userAlreadyInteracted = true;
   } else {
-    noteFileName = matchingFiles[0].name;
+    notePath = matchingFiles[0];
   }
 
-  const oldRelPath = `${srcFolder}/${noteFileName}`;
-  const newRelPath = `${dstFolder}/${noteFileName}`;
-  const oldAbsPath = path.join(VAULT_PATH, oldRelPath);
-  const newAbsPath = path.join(VAULT_PATH, newRelPath);
+  const noteFileName = notePath.split('/').pop() ?? notePath;
+  const newPath = `${dstFolder}/${noteFileName}`;
 
-  // 4. Check destination doesn't already have this file
-  if (fs.existsSync(newAbsPath)) {
-    return JSON.stringify({ error: `Datei existiert bereits im Ziel: "${newRelPath}"` });
-  }
-
-  // 5. Confirmation — only if user hasn't already interacted via elicitation
+  // 3. Confirmation
   if (!userAlreadyInteracted) {
     const confirmed = await tryElicit(server, {
       mode: 'form',
-      message: `Notiz verschieben?\n\n📄 ${noteFileName}\n📂 Von: ${srcFolder}\n📁 Nach: ${dstFolder}`,
+      message: `Notiz verschieben?\n\n${noteFileName}\nVon: ${sourceFolder}\nNach: ${dstFolder}`,
       requestedSchema: {
         type: 'object',
         properties: {
@@ -131,21 +113,14 @@ export async function handleMoveNote(args: Record<string, unknown>, server: Serv
     }
   }
 
-  // 6. Move the file
-  fs.renameSync(oldAbsPath, newAbsPath);
-
-  // 7. Update index
-  try {
-    removeFile(oldRelPath);
-    indexSingleFile(newRelPath);
-  } catch {
-    // Non-critical
-  }
+  // 4. Move via CLI (automatically updates internal links)
+  const result = await exec('move', { path: notePath, to: newPath });
 
   return JSON.stringify({
     message: 'Notiz verschoben',
-    from: oldRelPath,
-    to: newRelPath,
+    from: notePath,
+    to: newPath,
+    cliOutput: result,
   }, null, 2);
 }
 
@@ -177,16 +152,14 @@ async function askUserToPick(
   return (result?.content?.[field] as string) ?? null;
 }
 
-function resolveFolder(input: string): string[] {
-  const allFolders = scanAllFolders(VAULT_PATH, '', 0);
-
+function resolveFolder(allFolders: string[], input: string): string[] {
   // Exact match first
   const exact = allFolders.filter(f => f === input);
   if (exact.length > 0) return exact;
 
   const inputLower = input.toLowerCase();
 
-  // Match by last path segment (case-insensitive)
+  // Match by last path segment
   const byLastSegment = allFolders.filter(f => {
     const lastSegment = f.split('/').pop()!.toLowerCase();
     return lastSegment.includes(inputLower);
@@ -207,46 +180,4 @@ function resolveFolder(input: string): string[] {
   }
 
   return [];
-}
-
-function findNoteInFolder(folder: string, filename: string): fs.Dirent[] {
-  const absFolder = path.join(VAULT_PATH, folder);
-  const filenameLower = filename.toLowerCase();
-
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(absFolder, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  return entries.filter(e => {
-    if (!e.isFile() || !e.name.endsWith('.md')) return false;
-    const nameWithoutExt = e.name.slice(0, -3).toLowerCase();
-    return nameWithoutExt.includes(filenameLower);
-  });
-}
-
-function scanAllFolders(base: string, rel: string, depth: number): string[] {
-  if (depth > 5) return [];
-  const dir = rel ? path.join(base, rel) : base;
-  const result: string[] = [];
-
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return result;
-  }
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
-
-    const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-    result.push(relPath);
-    result.push(...scanAllFolders(base, relPath, depth + 1));
-  }
-
-  return result;
 }

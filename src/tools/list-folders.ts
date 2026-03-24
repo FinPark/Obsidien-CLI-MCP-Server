@@ -1,6 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { VAULT_PATH, SKIP_DIRS } from '../config.js';
+import { exec } from '../cli/obsidian-cli.js';
 
 export const listFoldersSchema = {
   name: 'list_folders',
@@ -13,41 +11,24 @@ and user disambiguation itself. Use list_folders only when the user explicitly a
     type: 'object' as const,
     properties: {
       query: { type: 'string', description: 'Filter folders by name (partial match, case-insensitive)' },
+      parent: { type: 'string', description: 'Filter by parent folder path' },
     },
   },
 };
 
-export function handleListFolders(args: Record<string, unknown>): string {
+export async function handleListFolders(args: Record<string, unknown>): Promise<string> {
   const query = (args.query as string | undefined)?.toLowerCase();
-  const folders = scanFolders(VAULT_PATH, '', 0);
+  const parent = args.parent as string | undefined;
+
+  const params: Record<string, string> = {};
+  if (parent) params.folder = parent;
+
+  const output = await exec('folders', params);
+  const folders = output.split('\n').filter((f) => f && f !== '/');
 
   const filtered = query
-    ? folders.filter(f => f.toLowerCase().includes(query))
+    ? folders.filter((f) => f.toLowerCase().includes(query))
     : folders;
 
   return JSON.stringify(filtered, null, 2);
-}
-
-function scanFolders(base: string, rel: string, depth: number): string[] {
-  if (depth > 5) return [];
-  const dir = rel ? path.join(base, rel) : base;
-  const result: string[] = [];
-
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return result;
-  }
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
-
-    const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-    result.push(relPath);
-    result.push(...scanFolders(base, relPath, depth + 1));
-  }
-
-  return result;
 }

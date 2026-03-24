@@ -1,8 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { VAULT_PATH } from '../config.js';
-import { indexSingleFile } from '../indexer/indexer.js';
+import { exec } from '../cli/obsidian-cli.js';
 import { tryElicit } from './elicitation.js';
 
 export const createNoteSchema = {
@@ -29,7 +26,6 @@ export async function handleCreateNote(args: Record<string, unknown>, server: Se
   let teilnehmer = ['André Finken'];
   let tags = ['Knowledge'];
 
-  // Ask user for metadata via elicitation (falls back to defaults on timeout/error)
   const elicit = await tryElicit(server, {
     mode: 'form',
     message: 'Neue Notiz erstellen — Felder ausfüllen oder leer lassen für Defaults:',
@@ -76,46 +72,21 @@ export async function handleCreateNote(args: Record<string, unknown>, server: Se
     }
   }
 
-  // Build frontmatter
-  const teilnehmerYaml = teilnehmer.map(t => `  - ${t}`).join('\n');
-  const tagsYaml = tags.map(t => `  - ${t}`).join('\n');
+  // Build frontmatter + body
+  const teilnehmerYaml = teilnehmer.map(t => `  - ${t}`).join('\\n');
+  const tagsYaml = tags.map(t => `  - ${t}`).join('\\n');
 
-  const note = `---
-Datum: ${today}
-Teilnehmer:
-${teilnehmerYaml}
-tags:
-${tagsYaml}
-Inhalt: ${inhalt}
----
+  const noteContent = `---\\nDatum: ${today}\\nTeilnehmer:\\n${teilnehmerYaml}\\ntags:\\n${tagsYaml}\\nInhalt: ${inhalt}\\n---\\n\\n${content}`;
 
-${content}
-`;
-
-  // Ensure unique filename
-  const inboxDir = path.join(VAULT_PATH, '📥 Inbox');
-  let filename = `${title}.md`;
-  let filePath = path.join(inboxDir, filename);
-  let counter = 1;
-  while (fs.existsSync(filePath)) {
-    filename = `${title} (${counter}).md`;
-    filePath = path.join(inboxDir, filename);
-    counter++;
-  }
-
-  fs.writeFileSync(filePath, note, 'utf-8');
-
-  // Update index
-  const relativePath = `📥 Inbox/${filename}`;
-  try {
-    indexSingleFile(relativePath);
-  } catch {
-    // Index update is non-critical
-  }
+  const result = await exec('create', {
+    path: `📥 Inbox/${title}.md`,
+    content: noteContent,
+  });
 
   return JSON.stringify({
     message: 'Notiz erstellt',
-    path: relativePath,
-    title: filename.replace('.md', ''),
+    path: `📥 Inbox/${title}.md`,
+    title,
+    cliOutput: result,
   }, null, 2);
 }

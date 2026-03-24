@@ -2,9 +2,9 @@
 
 ## Overview
 
-Build a production-ready MCP server that indexes an Obsidian vault into SQLite/FTS5 and exposes structured query tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
+Build a production-ready MCP server that exposes the full Obsidian vault via structured tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: v1.2.0 – Tag Management Tools
+## Status: v2.0.0 – Obsidian CLI Backend Migration
 
 Date: 2026-03-24
 
@@ -12,117 +12,132 @@ Date: 2026-03-24
 
 ## Completed Milestones
 
-### M1 — Core Infrastructure
+### M1 — Core Infrastructure (v1.0.0)
 - [x] TypeScript project setup with ES Module output (`module: Node16`)
 - [x] SQLite database with WAL mode and foreign keys via `better-sqlite3`
 - [x] Schema: `notes`, `note_participants`, `note_tags`, `note_art`, `notes_fts`
 - [x] FTS5 virtual table managed manually for full insert/delete control
-- [x] Indexed columns: title, inhalt (summary), body
 - [x] Relational indices for datum, folder, participant name, tag
 
-### M2 — Vault Indexer
+### M2 — Vault Indexer (v1.0.0)
 - [x] Recursive vault scanner respecting SKIP_DIRS
-- [x] YAML frontmatter parser via `gray-matter` with fallback manual line-by-line extractor for malformed YAML
+- [x] YAML frontmatter parser via `gray-matter` with fallback manual line-by-line extractor
 - [x] Field support: Datum, Uhrzeit, Ort, Organisator, Teilnehmer, tags, Inhalt, Art, Vorausgegangen
-- [x] Time normalization: YAML parses `10:00` as integer 600 (minutes) — converted back to `"10:00"`
-- [x] Date normalization: handles JS Date objects and string formats, returns YYYY-MM-DD
-- [x] Delta indexing on startup: mtime comparison (1 second tolerance), skips unchanged files
+- [x] Time normalization and date normalization
+- [x] Delta indexing on startup with mtime comparison
 - [x] Full rebuild option via `rebuild_index` tool
-- [x] Batch transaction for performance on initial index build
-- [x] Error tolerance: up to 5 individual file errors logged, remainder counted silently
 
-### M3 — File Watcher
-- [x] chokidar watcher on vault root
-- [x] Ignores SKIP_DIRS and dot-files
-- [x] Debounce via `awaitWriteFinish` (500ms stability threshold, 100ms poll)
-- [x] `add` and `change` events trigger `indexSingleFile`
-- [x] `unlink` events trigger `removeFile`
-- [x] Singleton pattern — only one watcher instance
+### M3 — File Watcher (v1.0.0)
+- [x] chokidar watcher on vault root with debounce
+- [x] `add`/`change` events trigger `indexSingleFile`; `unlink` events trigger `removeFile`
 
-### M4 — MCP Server & Transport
+### M4 — MCP Server & Transport (v1.0.0)
 - [x] StreamableHTTP transport (no Supergateway required)
-- [x] Per-session MCP server instances stored in a `Map<sessionId, transport>`
+- [x] Per-session MCP server instances in `Map<sessionId, transport>`
 - [x] Session lifecycle: POST (initialize) → GET (SSE stream) → DELETE (terminate)
-- [x] CORS headers for all origins
-- [x] Graceful shutdown on SIGINT/SIGTERM: closes all sessions, stops HTTP, closes DB
-- [x] Configurable port via `PORT` env variable (default: 8201)
+- [x] CORS headers, configurable port via `PORT` env variable (default: 8201)
+- [x] Graceful shutdown on SIGINT/SIGTERM
 
-### M5 — MCP Tools (12 total)
-- [x] `search_notes` — FTS5 + structured filters (date range, participants, tags, art, folder), sorted by relevance or date
-- [x] `read_note` — full note content by relative path; accepts `paths` array for bulk reads in a single call
-- [x] `list_participants` — all participants with frequency, optional filter
-- [x] `list_tags` — all tags with frequency, optional filter
-- [x] `vault_stats` — total count, date range, top participants, top tags, folder breakdown
-- [x] `rebuild_index` — full index rebuild triggered on demand
-- [x] `create_note` — creates note in `📥 Inbox` with elicitation form for metadata
-- [x] `move_note` — moves note between folders with smart resolution and confirmation
-- [x] `list_folders` — lists all vault folders with optional filter
-- [x] `update_tags` — add/remove tags on specific notes; modifies YAML frontmatter directly; supports hierarchical tags and array/inline formats
-- [x] `rename_tag` — rename a tag across all notes in the vault; elicitation confirmation when more than 5 notes affected
-- [x] `delete_tag` — remove a tag from all notes; always requires elicitation confirmation
+### M5 — Initial Tool Set — 12 tools (v1.0.0)
+- [x] `search_notes`, `read_note`, `list_participants`, `list_tags`, `vault_stats`, `rebuild_index`
+- [x] `create_note`, `move_note`, `list_folders`
+- [x] `update_tags`, `rename_tag`, `delete_tag`
 
-### M6 — MCP Elicitation
-- [x] `tryElicit` helper with 60-second timeout
-- [x] Returns `null` on timeout, unsupported client, or user cancel — tools fall back to defaults
-- [x] `create_note`: form asking for title, summary, participants, tags
-- [x] `move_note`: folder disambiguation dropdown, file disambiguation dropdown, move confirmation
+### M6 — MCP Elicitation (v1.0.0)
+- [x] `tryElicit` helper with 60-second timeout, fallback to defaults
+- [x] `create_note` form for title/summary/participants/tags
+- [x] `move_note` folder and file disambiguation dropdowns, move confirmation
 
-### M7 — Smart Folder Resolution (move_note)
-- [x] Exact match first
-- [x] Case-insensitive last-segment match
-- [x] Substring match anywhere in path
-- [x] Multi-word: all words must appear in path
-- [x] Disambiguation via elicitation dropdown when multiple matches found
+### M7 — Smart Folder Resolution (v1.0.0)
+- [x] Exact match → case-insensitive → substring → multi-word → elicitation dropdown
 - [x] Max folder scan depth: 5 levels
 
-### M8 — Query Engine
-- [x] FTS5 query escaping: each term quoted with `"..."`, internal quotes doubled
-- [x] Participant filter: AND logic with LIKE `%term%` partial matching (one JOIN per participant)
-- [x] Tag filter: OR logic with IN clause
-- [x] Art filter: OR logic with IN clause
-- [x] Correct binding order: JOIN bindings before WHERE bindings before LIMIT
+### M8 — Tool UX Improvements (v1.1.0)
+- [x] `read_note` description: explicit IMPORTANT hint for batched multi-path calls
 
-### M9 — Configuration & Operations
-- [x] Environment variable overrides for `VAULT_PATH`, `DB_PATH`, `PORT`
-- [x] launchd plist configuration documented for macOS auto-start
-- [x] `data/obsidian.db` and `dist/` excluded from git
-- [x] `node_modules/` excluded from git
+### M9 — Tag Management Tools (v1.2.0)
+- [x] `update_tags`: add/remove tags in one call; handles array/inline/single YAML formats; re-indexes after write
+- [x] `rename_tag`: vault-wide rename with elicitation confirmation for bulk changes (> 5 notes)
+- [x] `delete_tag`: vault-wide delete with mandatory elicitation confirmation
+- [x] Fixed `SQLITE_CONSTRAINT_PRIMARYKEY` in `indexSingleFile` for FTS5 re-index
 
 ---
 
-### M10 — Tool UX Improvements (v1.1.0)
-- [x] `read_note` description strengthened: explicit IMPORTANT hint to always pass all paths in a single array call rather than calling once per note; prevents unnecessary round trips in AI-driven workflows
+### M10 — Obsidian CLI Migration (v2.0.0) — CURRENT
 
-### M11 — Tag Management Tools (v1.2.0)
-- [x] `update_tags` tool: add/remove tags on one or more notes in a single call; handles array format, inline `[a, b]` format, and single-value tags; re-indexes each note after write
-- [x] `rename_tag` tool: renames a tag vault-wide using the SQLite index to find affected notes efficiently; elicitation confirmation for bulk changes (> 5 notes)
-- [x] `delete_tag` tool: removes a tag vault-wide with mandatory elicitation confirmation regardless of count
-- [x] `manage-tags.ts` helper: shared `modifyTags`, `parseTags`, `replaceTags` functions handling all YAML tag formats
-- [x] Fixed `SQLITE_CONSTRAINT_PRIMARYKEY` error in `indexSingleFile`: replaced `INSERT OR REPLACE INTO notes_fts` with explicit `DELETE FROM notes_fts WHERE rowid = ?` followed by `INSERT INTO notes_fts` to avoid FTS5 rowid conflicts on re-index
+**Motivation**: Replace the custom SQLite/chokidar/gray-matter indexer with the official Obsidian CLI (v1.12+). This eliminates the shadow database, startup indexing time, YAML parsing edge cases, and all three heavy dependencies. All vault data is now served live from Obsidian itself.
+
+- [x] `src/cli/obsidian-cli.ts` — central CLI wrapper
+  - `exec(command, params, flags)` — runs CLI, strips noise, returns stdout
+  - `execJson<T>(command, params, flags)` — parses JSON output
+  - `ObsidianCLIError` for typed error propagation
+  - Startup noise filter (strips `YYYY-MM-DD HH:MM:SS Loading ...` lines and installer warnings)
+  - `=>` prefix stripping for `eval` command output
+  - 30-second timeout, 10 MB max buffer
+- [x] `src/config.ts` — simplified to `VAULT_NAME` + `OBSIDIAN_BIN` (removed `VAULT_PATH`, `DB_PATH`, `SKIP_DIRS`)
+- [x] Removed `src/database/` (`db.ts`, `queries.ts`) — SQLite layer deleted
+- [x] Removed `src/indexer/` (`indexer.ts`, `vault-scanner.ts`, `frontmatter.ts`, `watcher.ts`) — file indexer deleted
+- [x] Removed `src/tools/rebuild-index.ts` — no longer applicable
+- [x] Removed `data/` directory
+- [x] Removed dependencies: `better-sqlite3`, `chokidar`, `gray-matter`, `@types/better-sqlite3`
+- [x] All existing 11 tools migrated to use CLI (`search-notes`, `read-note`, `list-participants`, `list-tags`, `vault-stats`, `create-note`, `move-note`, `list-folders`, `manage-tags`)
+- [x] `src/index.ts` — no more DB init or watcher, instant startup with CLI connectivity check
+- [x] `src/server.ts` — version `2.0.0`, 31 tools registered
+
+### M11 — New Tool Set — 20 new tools (v2.0.0)
+
+**Tasks (2 tools)**
+- [x] `list_tasks` — list tasks by status, file, folder, or daily note; supports `todo/done/all` filter
+- [x] `toggle_task` — toggle or set task status by file+line or ref
+
+**Link Analysis (5 tools)**
+- [x] `list_backlinks` — all notes linking to a specific note
+- [x] `list_links` — all outgoing links from a specific note
+- [x] `list_orphans` — notes with no incoming links
+- [x] `list_deadends` — notes with no outgoing links
+- [x] `list_unresolved` — wikilinks pointing to non-existing notes
+
+**Properties / Frontmatter (4 tools)**
+- [x] `list_properties` — all frontmatter keys vault-wide with types and counts; or per-file
+- [x] `get_property` — read one property value from a note
+- [x] `set_property` — write one property value to a note (typed)
+- [x] `remove_property` — remove a property from a note's frontmatter
+
+**Outline (1 tool)**
+- [x] `get_outline` — note heading structure in `tree`, `json`, or `md` format
+
+**Note Management (7 tools)**
+- [x] `append_note` — append content to end of note (with optional inline mode)
+- [x] `prepend_note` — insert content after frontmatter (with optional inline mode)
+- [x] `rename_note` — rename a note, Obsidian updates internal links automatically
+- [x] `delete_note` — delete note (trash by default; permanent flag available)
+- [x] `file_info` — path, name, extension, size, created/modified timestamps
+- [x] `list_files` — list files by folder and/or extension with optional count
+- [x] `list_recents` — recently opened files in Obsidian
+
+**Research (1 tool)**
+- [x] `research_chain` — traces `Vorausgegangen` predecessor chain backwards to root; collects outgoing links and backlinks from all chain notes; 3-level fallback resolution (CLI → folder search → full-text search)
 
 ---
 
 ## Known Limitations
 
-- Vault path defaults to a hardcoded macOS iCloud path; must be set via `VAULT_PATH` env var on other machines
+- Obsidian must be running for tools to work; the server starts but all tool calls fail if Obsidian is not reachable
 - No authentication on the HTTP endpoint (suitable for localhost use only)
-- FTS5 table is not content-synced — a crash between note write and FTS insert could leave stale data (resolved by `rebuild_index`)
-- `search_notes` `folder` filter requires exact folder name (no partial matching); use `list_folders` first to find the exact name
+- `OBSIDIAN_BIN` defaults to the macOS application path; must be configured on other platforms
+- The `research_chain` tool works best with exact note names; uses fallback strategies for folder names or partial matches
 
 ---
 
 ## Potential Future Improvements
 
-- [ ] Add full-text search for body content in `search_notes` result previews (snippets)
-- [ ] Add `delete_note` tool with elicitation confirmation
-- [ ] Add `rename_note` tool
 - [ ] HTTP Basic Auth or token-based auth for non-localhost deployments
-- [ ] Docker container with configurable vault mount
-- [ ] Test suite for frontmatter parser edge cases
-- [ ] Test suite for FTS5 query escaping
-- [ ] Periodic index consistency check (verify FTS rows match notes table)
-- [ ] Support for multiple vault paths
-- [ ] Markdown link graph indexing (backlinks, forward links)
+- [ ] Docker container with configurable vault mount (requires Obsidian CLI headless mode)
+- [ ] Test suite for CLI wrapper edge cases (timeout, malformed JSON, noise filtering)
+- [ ] Periodic connectivity health check with reconnect hint
+- [ ] Support for multiple vault names (multi-vault routing)
+- [ ] `daily_note` tool — create or open today's daily note
+- [ ] `template_note` tool — create a note from an Obsidian template
 
 ---
 
@@ -130,11 +145,10 @@ Date: 2026-03-24
 
 | Decision | Rationale |
 |----------|-----------|
+| Obsidian CLI as sole backend | Eliminates shadow database, startup indexing, YAML parsing bugs, and 3 heavy dependencies; vault data is always live |
+| Central `obsidian-cli.ts` wrapper | All tools share one place for timeout, buffer limit, noise filtering, and error normalization |
+| `execJson` helper | Reduces boilerplate in tools that need structured data; handles empty output gracefully |
 | StreamableHTTP transport | No external process required; cleaner than stdio+Supergateway for HTTP-native deployment |
 | Per-session MCP server instances | Avoids shared state across concurrent AI sessions |
-| Synchronous `better-sqlite3` | Simpler code in indexer and query layer; SQLite is fast enough for single-user local use |
-| Manual FTS5 management | Allows precise control over when rows appear in FTS vs notes table; avoids FTS content-table sync issues |
-| Delta index on startup | Startup time stays fast (<200ms for unchanged vault); no need for a separate "index freshness" mechanism |
-| chokidar file watcher | Cross-platform, battle-tested; handles atomic saves and write debouncing |
-| Elicitation with fallback to defaults | Tools remain functional even when the MCP client doesn't support elicitation |
-| SKIP_DIRS as a Set | O(1) lookup when scanning tens of thousands of files |
+| Elicitation with fallback to defaults | Tools remain functional even when the MCP client does not support elicitation |
+| `research_chain` multi-level fallback | Handles cases where the AI passes a folder name or partial name instead of a precise file reference |
