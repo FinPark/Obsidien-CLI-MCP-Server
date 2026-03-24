@@ -4,7 +4,7 @@
 
 Build a production-ready MCP server that indexes an Obsidian vault into SQLite/FTS5 and exposes structured query tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: Initial Release Complete (v1.0.0)
+## Status: v1.1.0 – Tool UX Improvements
 
 Date: 2026-03-24
 
@@ -49,7 +49,7 @@ Date: 2026-03-24
 
 ### M5 — MCP Tools (9 total)
 - [x] `search_notes` — FTS5 + structured filters (date range, participants, tags, art, folder), sorted by relevance or date
-- [x] `read_note` — full note content by relative path
+- [x] `read_note` — full note content by relative path; accepts `paths` array for bulk reads in a single call
 - [x] `list_participants` — all participants with frequency, optional filter
 - [x] `list_tags` — all tags with frequency, optional filter
 - [x] `vault_stats` — total count, date range, top participants, top tags, folder breakdown
@@ -84,6 +84,11 @@ Date: 2026-03-24
 - [x] launchd plist configuration documented for macOS auto-start
 - [x] `data/obsidian.db` and `dist/` excluded from git
 - [x] `node_modules/` excluded from git
+
+---
+
+### M10 — Tool UX Improvements (v1.1.0)
+- [x] `read_note` description strengthened: explicit IMPORTANT hint to always pass all paths in a single array call rather than calling once per note; prevents unnecessary round trips in AI-driven workflows
 
 ---
 

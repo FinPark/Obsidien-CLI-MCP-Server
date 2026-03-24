@@ -123,11 +123,15 @@ Returns metadata only (no note body). Use `read_note` for the full content.
 
 ### `read_note`
 
-Read the full content of a note by its relative vault path.
+Read the full content of one or more notes by their relative vault paths.
 
-| Parameter | Type   | Description                               |
-|-----------|--------|-------------------------------------------|
-| `path`    | string | Relative path (e.g. `📥 Inbox/Note.md`)  |
+IMPORTANT: Always pass all paths in a single call using the `paths` array. Never call this tool once per note — batch all reads into one request.
+
+| Parameter | Type     | Description                                                          |
+|-----------|----------|----------------------------------------------------------------------|
+| `paths`   | string[] | Relative paths within the vault (e.g. `["📥 Inbox/Note.md"]`)      |
+
+Returns fields: `path`, `title`, `datum`, `uhrzeit`, `ort`, `organisator`, `inhalt` (summary), `teilnehmer`, `tags`, `art`, and full `body` content.
 
 ### `list_participants`
 

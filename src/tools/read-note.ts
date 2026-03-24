@@ -4,7 +4,8 @@ export const readNoteSchema = {
   name: 'read_note',
   description: `Read full details of one or more Obsidian notes by path.
 Returns: path, title, datum, uhrzeit, ort, organisator, inhalt (summary), teilnehmer, tags, art, and full body content.
-Use search_notes first to find relevant notes, then read_note to get details.`,
+IMPORTANT: Pass ALL paths in a single call (array) instead of calling once per note.
+Use search_notes first to find relevant notes, then read_note with all paths at once.`,
   inputSchema: {
     type: 'object' as const,
     properties: {
