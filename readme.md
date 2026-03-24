@@ -1,5 +1,7 @@
 # Obsidian CLI MCP Server
 
+> **Datenschutz-Warnung**: Alle Notizen, die ueber diesen MCP-Server abgefragt werden, landen im Kontext des verwendeten LLM. Bei Cloud-LLMs (ChatGPT, Claude, Gemini etc.) bedeutet das: Deine Notizen koennten fuer das Training verwendet werden und waeren nach der Trainingsphase potenziell fuer alle Nutzer abrufbar. **Verwende ein lokales LLM** (z.B. Ollama, LM Studio), wenn deine Notizen vertrauliche oder persoenliche Inhalte enthalten — es sei denn, es ist dir egal, dass die ganze Welt deine Notizen kennt.
+
 Ein MCP-Server der alle Vault-Operationen an die offizielle **Obsidian CLI (v1.12+)** delegiert und **31 Tools** bereitstellt. Kein eigener Index, keine Datenbank — der Server kommuniziert direkt mit einer laufenden Obsidian-Instanz.
 
 ## Voraussetzungen
