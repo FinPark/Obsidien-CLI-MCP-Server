@@ -4,9 +4,9 @@
 
 Build a production-ready MCP server that exposes the full Obsidian vault via structured tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: v2.0.0 – Obsidian CLI Backend Migration
+## Status: v2.1.0 – Resources, Prompts & Progress Notifications
 
-Date: 2026-03-24
+Date: 2026-03-26
 
 ---
 
@@ -120,6 +120,27 @@ Date: 2026-03-24
 
 ---
 
+### M12 — MCP Resources, Prompts & Progress Notifications (v2.1.0) — CURRENT
+
+**MCP Resources**
+- [x] `src/resources/notes.ts` — `handleListResources`: lists all `.md` vault files as `obsidian://note/{path}` URIs via CLI `files` command
+- [x] `src/resources/notes.ts` — `handleReadResource`: reads note content by resolving the URI path via CLI `read` command
+- [x] `src/server.ts` — registered `ListResourcesRequestSchema` + `ReadResourceRequestSchema` handlers
+- [x] `src/server.ts` — `capabilities` extended to include `resources: {}` and `prompts: {}`
+
+**MCP Prompts**
+- [x] `src/prompts/index.ts` — 4 predefined prompts: `meeting-summary`, `research-topic`, `daily-review`, `link-suggestions`
+- [x] `getPromptMessages()` — returns typed `PromptMessage[]` with `role: 'user'` and `type: 'text'` content for each prompt
+- [x] `src/server.ts` — registered `ListPromptsRequestSchema` + `GetPromptRequestSchema` handlers
+
+**Progress Notifications in `research_chain`**
+- [x] `sendProgress()` helper in `research-chain.ts` — sends `notifications/progress` via `server.notification()`
+- [x] `ToolHandler` type in `server.ts` updated to accept optional `meta?: Record<string, unknown>` parameter
+- [x] `progressToken` extracted from `request.params._meta` in `CallToolRequest` handler and forwarded to tool handlers
+- [x] 3-step progress: step 1 after input validation, step 2 after note resolution, step 3 after eval completes
+
+---
+
 ## Known Limitations
 
 - Obsidian must be running for tools to work; the server starts but all tool calls fail if Obsidian is not reachable
@@ -138,6 +159,9 @@ Date: 2026-03-24
 - [ ] Support for multiple vault names (multi-vault routing)
 - [ ] `daily_note` tool — create or open today's daily note
 - [ ] `template_note` tool — create a note from an Obsidian template
+- [ ] Resource subscriptions (`resources/subscribe`) for live-updating note content in compatible clients
+- [ ] Prompt arguments with enum validation (e.g. `depth: full | short`)
+- [ ] Progress notifications for other long-running tools (e.g. `list_orphans` on large vaults)
 
 ---
 

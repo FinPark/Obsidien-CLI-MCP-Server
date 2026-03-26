@@ -2,7 +2,7 @@
 
 > **Datenschutz-Warnung**: Alle Notizen, die ueber diesen MCP-Server abgefragt werden, landen im Kontext des verwendeten LLM. Bei Cloud-LLMs (ChatGPT, Claude, Gemini etc.) bedeutet das: Deine Notizen koennten fuer das Training verwendet werden und waeren nach der Trainingsphase potenziell fuer alle Nutzer abrufbar. **Verwende ein lokales LLM** (z.B. Ollama, LM Studio), wenn deine Notizen vertrauliche oder persoenliche Inhalte enthalten — es sei denn, es ist dir egal, dass die ganze Welt deine Notizen kennt.
 
-Ein MCP-Server der alle Vault-Operationen an die offizielle **Obsidian CLI (v1.12+)** delegiert und **31 Tools** bereitstellt. Kein eigener Index, keine Datenbank — der Server kommuniziert direkt mit einer laufenden Obsidian-Instanz.
+Ein MCP-Server der alle Vault-Operationen an die offizielle **Obsidian CLI (v1.12+)** delegiert und **31 Tools**, **MCP Resources** sowie **4 MCP Prompts** bereitstellt. Kein eigener Index, keine Datenbank — der Server kommuniziert direkt mit einer laufenden Obsidian-Instanz.
 
 ## Voraussetzungen
 
@@ -123,7 +123,26 @@ Ausgabe bei erfolgreichem Start:
 
 | Tool | Beschreibung |
 |---|---|
-| `research_chain` | Verfolgt die Vorgaenger-Kette (Frontmatter "Vorausgegangen") rueckwaerts bis zur Wurzel-Notiz. Liefert die komplette Kette chronologisch, plus alle Links und Backlinks der Ketten-Notizen. |
+| `research_chain` | Verfolgt die Vorgaenger-Kette (Frontmatter "Vorausgegangen") rueckwaerts bis zur Wurzel-Notiz. Liefert die komplette Kette chronologisch, plus alle Links und Backlinks der Ketten-Notizen. Sendet **Progress Notifications** (3 Schritte) waehrend der Ausfuehrung. |
+
+## MCP Resources
+
+Alle Markdown-Notizen des Vaults sind als MCP Resources unter dem Schema `obsidian://note/{vault-relativer-pfad}` erreichbar. Kompatible MCP-Clients koennen damit direkt auf einzelne Notizen zugreifen ohne explizite Tool-Aufrufe.
+
+| URI-Schema | Beschreibung |
+|---|---|
+| `obsidian://note/{path}` | Liest den Inhalt der Notiz am angegebenen Vault-Pfad |
+
+## MCP Prompts (4)
+
+Vordefinierte Prompts fuer haeufige Aufgaben — werden von kompatiblen MCP-Clients direkt als Slash-Commands oder Prompt-Picker angeboten:
+
+| Prompt | Beschreibung | Parameter |
+|---|---|---|
+| `meeting-summary` | Schreibt eine praegnante Zusammenfassung einer Meeting-Note | `note_path` (required) |
+| `research-topic` | Strukturierter Ueberblick ueber die Themenhistorie via `research_chain` | `note_file` (required), `depth` (optional: full/short) |
+| `daily-review` | Zeigt die heutige Daily Note und alle offenen Tasks | — |
+| `link-suggestions` | Analysiert Links und schlaegt thematisch passende, noch nicht verlinkte Notes vor | `note_path` (required) |
 
 ## Architektur
 
@@ -158,10 +177,14 @@ Der CLI-Executor:
 ```
 src/
   index.ts              HTTP-Server, Session-Management
-  server.ts             MCP-Server, Tool-Routing (v2.0.0, 31 Tools)
+  server.ts             MCP-Server, Tool-Routing (v2.0.0, 31 Tools + Resources + Prompts)
   config.ts             VAULT_NAME, OBSIDIAN_BIN
   cli/
     obsidian-cli.ts     CLI-Wrapper: exec(), execJson(), Noise-Filtering
+  resources/
+    notes.ts            MCP Resources Handler — alle Markdown-Notes als obsidian://note/{path} URIs
+  prompts/
+    index.ts            4 MCP Prompts (meeting-summary, research-topic, daily-review, link-suggestions)
   tools/
     search-notes.ts     search_notes
     read-note.ts        read_note
@@ -177,7 +200,7 @@ src/
     properties.ts       list_properties, get_property, set_property, remove_property
     outline.ts          get_outline
     note-management.ts  append_note, prepend_note, rename_note, delete_note, file_info, list_files, list_recents
-    research-chain.ts   research_chain (Vorgaenger-Kette mit Links/Backlinks)
+    research-chain.ts   research_chain (Vorgaenger-Kette mit Links/Backlinks + Progress Notifications)
     elicitation.ts      tryElicit() Helper
 ```
 

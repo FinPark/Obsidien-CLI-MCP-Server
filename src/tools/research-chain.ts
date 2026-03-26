@@ -1,4 +1,18 @@
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { exec } from '../cli/obsidian-cli.js';
+
+async function sendProgress(
+  server: Server,
+  progressToken: string | number | undefined,
+  progress: number,
+  total: number,
+) {
+  if (!progressToken) return;
+  await server.notification({
+    method: 'notifications/progress',
+    params: { progressToken, progress, total },
+  });
+}
 
 export const researchChainSchema = {
   name: 'research_chain',
@@ -24,13 +38,20 @@ This gives a complete overview of a topic's history and related context.`,
   },
 };
 
-export async function handleResearchChain(args: Record<string, unknown>): Promise<string> {
+export async function handleResearchChain(
+  args: Record<string, unknown>,
+  server: Server,
+  meta?: Record<string, unknown>,
+): Promise<string> {
   const startFile = args.file as string | undefined;
   const startPath = args.path as string | undefined;
+  const progressToken = meta?.progressToken as string | number | undefined;
 
   if (!startFile && !startPath) {
     return JSON.stringify({ error: 'file oder path ist erforderlich.' });
   }
+
+  await sendProgress(server, progressToken, 1, 3);
 
   // Resolve starting note
   let resolvedStart = await resolveNote(startFile, startPath);
@@ -49,6 +70,8 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
       error: `Notiz "${hint}" nicht gefunden. Bitte einen genauen Dateinamen oder Pfad angeben.`,
     });
   }
+
+  await sendProgress(server, progressToken, 2, 3);
 
   // Single eval call that does ALL the work inside Obsidian — no 370 CLI calls
   const code = `
@@ -153,6 +176,7 @@ export async function handleResearchChain(args: Record<string, unknown>): Promis
 
   try {
     const result = await exec('eval', { code });
+    await sendProgress(server, progressToken, 3, 3);
     // eval returns stringified JSON, parse and re-format
     const parsed = JSON.parse(result);
     return JSON.stringify(parsed, null, 2);

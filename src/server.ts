@@ -2,7 +2,13 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { handleListResources, handleReadResource } from './resources/notes.js';
+import { PROMPTS, getPromptMessages } from './prompts/index.js';
 
 import { searchNotesSchema, handleSearchNotes } from './tools/search-notes.js';
 import { readNoteSchema, handleReadNote } from './tools/read-note.js';
@@ -20,7 +26,7 @@ import { getOutlineSchema, handleGetOutline } from './tools/outline.js';
 import { appendNoteSchema, handleAppendNote, prependNoteSchema, handlePrependNote, renameNoteSchema, handleRenameNote, deleteNoteSchema, handleDeleteNote, fileInfoSchema, handleFileInfo, listFilesSchema, handleListFiles, listRecentsSchema, handleListRecents } from './tools/note-management.js';
 import { researchChainSchema, handleResearchChain } from './tools/research-chain.js';
 
-export type ToolHandler = (args: Record<string, unknown>, server: Server) => string | Promise<string>;
+export type ToolHandler = (args: Record<string, unknown>, server: Server, meta?: Record<string, unknown>) => string | Promise<string>;
 
 const tools = [
   searchNotesSchema,
@@ -105,7 +111,7 @@ const handlers: Record<string, ToolHandler> = {
 export function createServer(): Server {
   const server = new Server(
     { name: 'obsidian-vault', version: '2.0.0' },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, resources: {}, prompts: {} } }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -124,7 +130,8 @@ export function createServer(): Server {
     }
 
     try {
-      const result = await handler(args ?? {}, server);
+      const meta = request.params._meta as Record<string, unknown> | undefined;
+      const result = await handler(args ?? {}, server, meta);
       return {
         content: [{ type: 'text', text: result }],
       };
@@ -135,6 +142,27 @@ export function createServer(): Server {
         isError: true,
       };
     }
+  });
+
+  // Resources
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    return handleListResources();
+  });
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    return handleReadResource(request.params.uri);
+  });
+
+  // Prompts
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: PROMPTS,
+  }));
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: promptArgs } = request.params;
+    const args = (promptArgs ?? {}) as Record<string, string>;
+    const messages = getPromptMessages(name, args);
+    return { messages };
   });
 
   return server;
