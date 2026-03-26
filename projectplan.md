@@ -4,7 +4,7 @@
 
 Build a production-ready MCP server that exposes the full Obsidian vault via structured tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: v2.2.0 – Obsidian Deep Links, dotenv Config & Prompt Improvements
+## Status: v2.3.0 – list_modified_notes, Tool-Beschreibungen und Config-Bereinigung
 
 Date: 2026-03-26
 
@@ -120,7 +120,17 @@ Date: 2026-03-26
 
 ---
 
-### M13 — Obsidian Deep Links, dotenv Config & Prompt Improvements (v2.2.0) — CURRENT
+### M14 — list_modified_notes, Tool-Beschreibungen & Config-Bereinigung (v2.3.0) — CURRENT
+
+- [x] `src/config.ts` — Filesystem-Bypass entfernt (`readFileSync`/`detectVaultPath`); zurueck zum sauberen Stand mit reinen Env-Variablen
+- [x] `src/tools/note-management.ts` — `list_recents` Beschreibung: Hinweis dass kein Datum enthalten, stattdessen `list_modified_notes` nutzen
+- [x] `src/tools/note-management.ts` — `file_info` Beschreibung: Warnung gegen Loop-Nutzung, stattdessen `list_modified_notes`
+- [x] `src/tools/note-management.ts` — Neues Tool `list_modified_notes`: nutzt `eval`-Befehl mit `app.vault.getMarkdownFiles()` und `f.stat.mtime` — ein einziger CLI-Call statt N x `file_info`-Calls; gibt Ergebnis als Markdown-Tabelle mit Datum und Notizlink aus
+- [x] `src/server.ts` — `list_modified_notes` registriert (Schema + Handler)
+
+---
+
+### M13 — Obsidian Deep Links, dotenv Config & Prompt Improvements (v2.2.0)
 
 - [x] `src/tools/links.ts` — `resolveToPath()` helper; `formatObsidianLink(path)` generates `obsidian://open?vault=...&file=...` links for all path returns
 - [x] `src/tools/search-notes.ts` — `search_notes` results include `obsidian://` link per result

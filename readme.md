@@ -2,7 +2,7 @@
 
 > **Datenschutz-Warnung**: Alle Notizen, die ueber diesen MCP-Server abgefragt werden, landen im Kontext des verwendeten LLM. Bei Cloud-LLMs (ChatGPT, Claude, Gemini etc.) bedeutet das: Deine Notizen koennten fuer das Training verwendet werden und waeren nach der Trainingsphase potenziell fuer alle Nutzer abrufbar. **Verwende ein lokales LLM** (z.B. Ollama, LM Studio), wenn deine Notizen vertrauliche oder persoenliche Inhalte enthalten — es sei denn, es ist dir egal, dass die ganze Welt deine Notizen kennt.
 
-Ein MCP-Server der alle Vault-Operationen an die offizielle **Obsidian CLI (v1.12+)** delegiert und **31 Tools**, **MCP Resources** sowie **4 MCP Prompts** bereitstellt. Kein eigener Index, keine Datenbank — der Server kommuniziert direkt mit einer laufenden Obsidian-Instanz.
+Ein MCP-Server der alle Vault-Operationen an die offizielle **Obsidian CLI (v1.12+)** delegiert und **32 Tools**, **MCP Resources** sowie **4 MCP Prompts** bereitstellt. Kein eigener Index, keine Datenbank — der Server kommuniziert direkt mit einer laufenden Obsidian-Instanz.
 
 ## Voraussetzungen
 
@@ -47,7 +47,7 @@ Ausgabe bei erfolgreichem Start:
 [obsidian-mcp] StreamableHTTP server running on http://localhost:8201/mcp
 ```
 
-## MCP Tools (31)
+## MCP Tools (32)
 
 ### Suche & Lesen
 
@@ -67,9 +67,10 @@ Ausgabe bei erfolgreichem Start:
 | `rename_note` | Notiz umbenennen (Links werden automatisch aktualisiert) |
 | `move_note` | Notiz verschieben (Smart-Matching, Link-Updates) |
 | `delete_note` | Notiz loeschen (Papierkorb oder permanent) |
-| `file_info` | Datei-Info (Groesse, Erstellt, Geaendert) |
+| `file_info` | Datei-Info fuer eine einzelne Datei (Groesse, Erstellt, Geaendert) — nicht fuer Schleifen |
 | `list_files` | Dateien auflisten (Folder/Extension-Filter) |
-| `list_recents` | Zuletzt geoeffnete Dateien (mit `obsidian://`-Links) |
+| `list_recents` | Zuletzt geoeffnete Dateien (mit `obsidian://`-Links, ohne Datum) |
+| `list_modified_notes` | Notizen nach Aenderungsdatum filtern — effizienter Einzelaufruf statt N x `file_info` |
 
 ### Ordner
 
@@ -153,7 +154,7 @@ HTTP Request (Port 8201)
 StreamableHTTP Transport (Session-Management)
     |
     v
-MCP Server (31 Tools registriert)
+MCP Server (32 Tools registriert)
     |
     v
 CLI Executor (src/cli/obsidian-cli.ts)
@@ -199,7 +200,7 @@ src/
     links.ts            list_backlinks, list_links, list_orphans, list_deadends, list_unresolved
     properties.ts       list_properties, get_property, set_property, remove_property
     outline.ts          get_outline
-    note-management.ts  append_note, prepend_note, rename_note, delete_note, file_info, list_files, list_recents
+    note-management.ts  append_note, prepend_note, rename_note, delete_note, file_info, list_files, list_recents, list_modified_notes
     research-chain.ts   research_chain (Vorgaenger-Kette mit Links/Backlinks + Progress Notifications)
     elicitation.ts      tryElicit() Helper
 ```

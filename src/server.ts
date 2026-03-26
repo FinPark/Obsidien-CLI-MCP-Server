@@ -23,7 +23,7 @@ import { listTasksSchema, handleListTasks, toggleTaskSchema, handleToggleTask } 
 import { listBacklinksSchema, handleListBacklinks, listLinksSchema, handleListLinks, listOrphansSchema, handleListOrphans, listDeadendsSchema, handleListDeadends, listUnresolvedSchema, handleListUnresolved } from './tools/links.js';
 import { listPropertiesSchema, handleListProperties, getPropertySchema, handleGetProperty, setPropertySchema, handleSetProperty, removePropertySchema, handleRemoveProperty } from './tools/properties.js';
 import { getOutlineSchema, handleGetOutline } from './tools/outline.js';
-import { appendNoteSchema, handleAppendNote, prependNoteSchema, handlePrependNote, renameNoteSchema, handleRenameNote, deleteNoteSchema, handleDeleteNote, fileInfoSchema, handleFileInfo, listFilesSchema, handleListFiles, listRecentsSchema, handleListRecents } from './tools/note-management.js';
+import { appendNoteSchema, handleAppendNote, prependNoteSchema, handlePrependNote, renameNoteSchema, handleRenameNote, deleteNoteSchema, handleDeleteNote, fileInfoSchema, handleFileInfo, listFilesSchema, handleListFiles, listRecentsSchema, handleListRecents, listModifiedNotesSchema, handleListModifiedNotes } from './tools/note-management.js';
 import { researchChainSchema, handleResearchChain } from './tools/research-chain.js';
 
 export type ProgressContext = {
@@ -69,6 +69,7 @@ const tools = [
   fileInfoSchema,
   listFilesSchema,
   listRecentsSchema,
+  listModifiedNotesSchema,
   // Research
   researchChainSchema,
 ];
@@ -109,6 +110,7 @@ const handlers: Record<string, ToolHandler> = {
   file_info: handleFileInfo,
   list_files: handleListFiles,
   list_recents: handleListRecents,
+  list_modified_notes: handleListModifiedNotes,
   // Research
   research_chain: handleResearchChain,
 };

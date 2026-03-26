@@ -6,7 +6,9 @@ import { formatObsidianLink } from '../utils/obsidian-links.js';
 
 export const listRecentsSchema = {
   name: 'list_recents',
-  description: `List recently opened files in Obsidian.`,
+  description: `List recently opened files in Obsidian (paths only, no dates).
+NOTE: Does NOT return modification dates. If the user asks for notes created or modified
+within a time period (e.g. "last 3 weeks"), use list_modified_notes instead.`,
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -150,8 +152,10 @@ export async function handleDeleteNote(args: Record<string, unknown>): Promise<s
 
 export const fileInfoSchema = {
   name: 'file_info',
-  description: `Show info about a file: path, name, extension, size, created/modified timestamps.
-Defaults to the active file if no file/path is specified.`,
+  description: `Show info about a SINGLE file: path, name, extension, size, created/modified timestamps.
+Defaults to the active file if no file/path is specified.
+WARNING: Only use for a single file. NEVER call this in a loop for multiple files —
+use list_modified_notes instead which returns dates for many files efficiently.`,
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -204,4 +208,69 @@ export async function handleListFiles(args: Record<string, unknown>): Promise<st
 
   const paths = result.split('\n').filter(Boolean);
   return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
+}
+
+// ─── list_modified_notes ───
+
+export const listModifiedNotesSchema = {
+  name: 'list_modified_notes',
+  description: `List notes that were created or modified within a time period.
+Returns a table with modification date (dd.mm.yyyy), time (HH:MM), and note name with link.
+Use this for queries like "which notes did I change in the last 3 weeks?" or "recently modified notes".
+Much more efficient than calling file_info repeatedly — fetches all dates in parallel.`,
+  inputSchema: {
+    type: 'object' as const,
+    properties: {
+      days: { type: 'number', description: 'How many days back to look (default: 21 = 3 weeks)' },
+      since: { type: 'string', description: 'Alternatively: start date in YYYY-MM-DD format' },
+      folder: { type: 'string', description: 'Limit to a specific vault folder' },
+      limit: { type: 'number', description: 'Max results (default: 50)' },
+    },
+  },
+};
+
+export async function handleListModifiedNotes(args: Record<string, unknown>): Promise<string> {
+  const days = (args.days as number | undefined) ?? 21;
+  const limit = (args.limit as number | undefined) ?? 100;
+  const folder = args.folder as string | undefined;
+
+  let cutoff: Date;
+  if (args.since) {
+    cutoff = new Date(args.since as string);
+  } else {
+    cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+  }
+  cutoff.setHours(0, 0, 0, 0);
+  const cutoffMs = cutoff.getTime();
+
+  // Single CLI call: get all markdown files with mtime via Obsidian API
+  const folderFilter = folder ? `.filter(f=>f.path.startsWith(${JSON.stringify(folder + '/')}))` : '';
+  const code = `JSON.stringify(app.vault.getMarkdownFiles()${folderFilter}.map(f=>({path:f.path,mtime:f.stat.mtime})))`;
+
+  const raw = await exec('eval', { code });
+  if (!raw) return 'Keine Notizen im Vault gefunden.';
+
+  const allFiles = JSON.parse(raw) as Array<{ path: string; mtime: number }>;
+
+  const results = allFiles
+    .filter((f) => f.mtime >= cutoffMs)
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit);
+
+  if (results.length === 0) {
+    return `Keine Notizen seit ${cutoff.toLocaleDateString('de-DE')} erstellt oder geändert.`;
+  }
+
+  const header = '| Datum | Notizname |\n|---|---|';
+  const rows = results.map((f) => {
+    const date = new Date(f.mtime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const urlMatch = formatObsidianLink(f.path, VAULT_NAME).match(/\(([^)]+)\)/);
+    const url = urlMatch ? urlMatch[1] : '#';
+    const noteName = f.path.split('/').pop()?.replace('.md', '') ?? f.path;
+    return `| ${date} | [${noteName}](${url}) |`;
+  });
+
+  const total = allFiles.filter((f) => f.mtime >= cutoffMs).length;
+  return `${total} Notizen gefunden (zeige ${results.length}):\n\n${header}\n${rows.join('\n')}`;
 }
