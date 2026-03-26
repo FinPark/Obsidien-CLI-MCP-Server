@@ -1,4 +1,6 @@
 import { exec } from '../cli/obsidian-cli.js';
+import { VAULT_NAME } from '../config.js';
+import { formatObsidianLink } from '../utils/obsidian-links.js';
 
 // ─── list_recents ───
 
@@ -18,7 +20,11 @@ export async function handleListRecents(args: Record<string, unknown>): Promise<
   if (args.total) flags.push('total');
 
   const result = await exec('recents', {}, flags);
-  return result || 'Keine zuletzt geöffneten Dateien.';
+  if (!result) return 'Keine zuletzt geöffneten Dateien.';
+  if (args.total) return result;
+
+  const paths = result.split('\n').filter(Boolean);
+  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── append_note ───
@@ -189,5 +195,13 @@ export async function handleListFiles(args: Record<string, unknown>): Promise<st
   if (args.total) flags.push('total');
 
   const result = await exec('files', params, flags);
-  return result || 'Keine Dateien gefunden.';
+  if (!result) return 'Keine Dateien gefunden.';
+  if (args.total) return result;
+
+  // Only linkify markdown files
+  const ext = (args.ext as string | undefined) ?? 'md';
+  if (ext !== 'md') return result;
+
+  const paths = result.split('\n').filter(Boolean);
+  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
 }

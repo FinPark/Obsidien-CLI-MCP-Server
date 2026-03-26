@@ -26,7 +26,12 @@ import { getOutlineSchema, handleGetOutline } from './tools/outline.js';
 import { appendNoteSchema, handleAppendNote, prependNoteSchema, handlePrependNote, renameNoteSchema, handleRenameNote, deleteNoteSchema, handleDeleteNote, fileInfoSchema, handleFileInfo, listFilesSchema, handleListFiles, listRecentsSchema, handleListRecents } from './tools/note-management.js';
 import { researchChainSchema, handleResearchChain } from './tools/research-chain.js';
 
-export type ToolHandler = (args: Record<string, unknown>, server: Server, meta?: Record<string, unknown>) => string | Promise<string>;
+export type ProgressContext = {
+  progressToken?: string | number;
+  requestId?: string | number;
+};
+
+export type ToolHandler = (args: Record<string, unknown>, server: Server, progress?: ProgressContext) => string | Promise<string>;
 
 const tools = [
   searchNotesSchema,
@@ -118,7 +123,7 @@ export function createServer(): Server {
     tools,
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const handler = handlers[name];
 
@@ -131,7 +136,11 @@ export function createServer(): Server {
 
     try {
       const meta = request.params._meta as Record<string, unknown> | undefined;
-      const result = await handler(args ?? {}, server, meta);
+      const progress: ProgressContext = {
+        progressToken: meta?.progressToken as string | number | undefined,
+        requestId: extra.requestId,
+      };
+      const result = await handler(args ?? {}, server, progress);
       return {
         content: [{ type: 'text', text: result }],
       };

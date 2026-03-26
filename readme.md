@@ -26,11 +26,11 @@ npm run build
 
 ## Konfiguration
 
-Alle Einstellungen sind optional und ueber Umgebungsvariablen steuerbar:
+Alle Einstellungen sind optional und ueber Umgebungsvariablen steuerbar (oder via `.env`-Datei):
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `VAULT_NAME` | `vault_arbeit` | Name des Obsidian-Vaults |
+| `VAULT_NAME` | `vault_arbeit` | Name des Obsidian-Vaults (Standard-Vault geaendert auf `vault_arbeit`) |
 | `OBSIDIAN_BIN` | `/Applications/Obsidian.app/Contents/MacOS/Obsidian` | Pfad zum CLI-Binary |
 | `PORT` | `8201` | HTTP-Port fuer den MCP-Server |
 
@@ -53,7 +53,7 @@ Ausgabe bei erfolgreichem Start:
 
 | Tool | Beschreibung |
 |---|---|
-| `search_notes` | Volltextsuche (gleiche Syntax wie Obsidians Suchleiste) |
+| `search_notes` | Volltextsuche (gleiche Syntax wie Obsidians Suchleiste); jedes Ergebnis enthaelt einen `obsidian://`-Link |
 | `read_note` | Notizen lesen (bulk, per paths-Array) |
 | `vault_stats` | Vault-Uebersicht: Name, Dateien, Ordner, Groesse, Top-Tags |
 
@@ -69,7 +69,7 @@ Ausgabe bei erfolgreichem Start:
 | `delete_note` | Notiz loeschen (Papierkorb oder permanent) |
 | `file_info` | Datei-Info (Groesse, Erstellt, Geaendert) |
 | `list_files` | Dateien auflisten (Folder/Extension-Filter) |
-| `list_recents` | Zuletzt geoeffnete Dateien |
+| `list_recents` | Zuletzt geoeffnete Dateien (mit `obsidian://`-Links) |
 
 ### Ordner
 

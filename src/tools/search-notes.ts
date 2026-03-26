@@ -1,4 +1,6 @@
 import { exec } from '../cli/obsidian-cli.js';
+import { VAULT_NAME } from '../config.js';
+import { formatObsidianLink } from '../utils/obsidian-links.js';
 
 export const searchNotesSchema = {
   name: 'search_notes',
@@ -30,9 +32,13 @@ export async function handleSearchNotes(args: Record<string, unknown>): Promise<
 
   const result = await exec(command, params);
 
-  if (!result) {
-    return 'Keine Notizen gefunden.';
-  }
+  if (!result) return 'Keine Notizen gefunden.';
 
-  return result;
+  // context search has grep-style output (path: line) — leave as-is
+  if (context) return result;
+
+  const paths = result.split('\n').filter(Boolean);
+  return paths
+    .map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`)
+    .join('\n');
 }

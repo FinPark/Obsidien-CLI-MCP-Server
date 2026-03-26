@@ -1,4 +1,12 @@
+import { VAULT_NAME } from '../config.js';
+import { generateLinkInstructions } from '../utils/obsidian-links.js';
+
 export const PROMPTS = [
+  {
+    name: 'link-format-instructions',
+    description: 'Injiziert Formatierungsregeln für klickbare Obsidian-Links (obsidian://). Vault-Name wird automatisch ermittelt.',
+    arguments: [],
+  },
   {
     name: 'meeting-summary',
     description: 'Schreibt eine prägnante Zusammenfassung einer Meeting-Note',
@@ -30,6 +38,18 @@ export const PROMPTS = [
 
 export function getPromptMessages(name: string, args: Record<string, string>) {
   switch (name) {
+    case 'link-format-instructions': {
+      return [
+        {
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: generateLinkInstructions(VAULT_NAME),
+          },
+        },
+      ];
+    }
+
     case 'meeting-summary':
       return [
         {

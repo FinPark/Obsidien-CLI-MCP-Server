@@ -1,4 +1,6 @@
 import { exec, execJson } from '../cli/obsidian-cli.js';
+import { VAULT_NAME } from '../config.js';
+import { formatObsidianLink } from '../utils/obsidian-links.js';
 
 // ─── list_backlinks ───
 
@@ -20,14 +22,31 @@ export async function handleListBacklinks(args: Record<string, unknown>): Promis
   const params: Record<string, string> = {};
   const flags: string[] = [];
 
-  if (args.file) params.file = args.file as string;
-  if (args.path) params.path = args.path as string;
+  const resolved = await resolveToPath(args.file as string | undefined, args.path as string | undefined);
+  if (resolved) params.path = resolved;
+  else if (args.file) params.file = args.file as string;
+  else if (args.path) params.path = args.path as string;
+
   if (args.counts) flags.push('counts');
 
   params.format = 'json';
 
   const result = await exec('backlinks', params, flags);
-  return result || '[]';
+  if (!result) return 'Keine Backlinks gefunden.';
+
+  try {
+    const data = JSON.parse(result) as Array<{ path: string; count?: number } | string>;
+    if (!data.length) return 'Keine Backlinks gefunden.';
+    return data
+      .map((item) => {
+        const path = typeof item === 'string' ? item : item.path;
+        const count = typeof item === 'object' && item.count ? ` (${item.count}x)` : '';
+        return `- ${formatObsidianLink(path, VAULT_NAME)}${count}`;
+      })
+      .join('\n');
+  } catch {
+    return result;
+  }
 }
 
 // ─── list_links ───
@@ -45,14 +64,35 @@ Defaults to the active file if no file/path is specified.`,
   },
 };
 
+async function resolveToPath(file?: string, path?: string): Promise<string | null> {
+  try {
+    const params: Record<string, string> = {};
+    if (path && path.includes('/')) params.path = path;
+    else if (file) params.file = file;
+    else if (path) params.file = path; // path without slash = treat as filename
+
+    const info = await exec('file', params);
+    for (const line of info.split('\n')) {
+      const [key, ...rest] = line.split('\t');
+      if (key === 'path') return rest.join('\t').trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleListLinks(args: Record<string, unknown>): Promise<string> {
-  const params: Record<string, string> = {};
+  const resolved = await resolveToPath(args.file as string | undefined, args.path as string | undefined);
+  if (!resolved) return 'Notiz nicht gefunden.';
 
-  if (args.file) params.file = args.file as string;
-  if (args.path) params.path = args.path as string;
+  const result = await exec('links', { path: resolved });
+  if (!result) return 'Keine ausgehenden Links.';
 
-  const result = await exec('links', params);
-  return result || 'Keine ausgehenden Links.';
+  const paths = result.split('\n').filter(Boolean);
+  return paths
+    .map((path) => `- ${formatObsidianLink(path.trim(), VAULT_NAME)}`)
+    .join('\n');
 }
 
 // ─── list_orphans ───
@@ -74,7 +114,11 @@ export async function handleListOrphans(args: Record<string, unknown>): Promise<
   if (args.total) flags.push('total');
 
   const result = await exec('orphans', {}, flags);
-  return result || 'Keine verwaisten Notizen.';
+  if (!result) return 'Keine verwaisten Notizen.';
+  if (args.total) return result;
+
+  const paths = result.split('\n').filter(Boolean);
+  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── list_deadends ───
@@ -96,7 +140,11 @@ export async function handleListDeadends(args: Record<string, unknown>): Promise
   if (args.total) flags.push('total');
 
   const result = await exec('deadends', {}, flags);
-  return result || 'Keine Sackgassen-Notizen.';
+  if (!result) return 'Keine Sackgassen-Notizen.';
+  if (args.total) return result;
+
+  const paths = result.split('\n').filter(Boolean);
+  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── list_unresolved ───

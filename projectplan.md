@@ -4,7 +4,7 @@
 
 Build a production-ready MCP server that exposes the full Obsidian vault via structured tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: v2.1.0 – Resources, Prompts & Progress Notifications
+## Status: v2.2.0 – Obsidian Deep Links, dotenv Config & Prompt Improvements
 
 Date: 2026-03-26
 
@@ -120,7 +120,18 @@ Date: 2026-03-26
 
 ---
 
-### M12 — MCP Resources, Prompts & Progress Notifications (v2.1.0) — CURRENT
+### M13 — Obsidian Deep Links, dotenv Config & Prompt Improvements (v2.2.0) — CURRENT
+
+- [x] `src/tools/links.ts` — `resolveToPath()` helper; `formatObsidianLink(path)` generates `obsidian://open?vault=...&file=...` links for all path returns
+- [x] `src/tools/search-notes.ts` — `search_notes` results include `obsidian://` link per result
+- [x] `src/tools/note-management.ts` — `list_recents` and `list_files` results include `obsidian://` links
+- [x] `src/config.ts` — `dotenv/config` import added; `vault_arbeit` set as default vault name
+- [x] `src/prompts/index.ts` — prompt improvements
+- [x] `src/server.ts` — updated server registration and tool routing
+- [x] `package.json` + `package-lock.json` — dotenv dependency added
+- [x] `src/tools/research-chain.ts` — improvements to research chain tool
+
+### M12 — MCP Resources, Prompts & Progress Notifications (v2.1.0)
 
 **MCP Resources**
 - [x] `src/resources/notes.ts` — `handleListResources`: lists all `.md` vault files as `obsidian://note/{path}` URIs via CLI `files` command

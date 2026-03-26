@@ -1,17 +1,22 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { exec } from '../cli/obsidian-cli.js';
+import type { ProgressContext } from '../server.js';
 
 async function sendProgress(
   server: Server,
-  progressToken: string | number | undefined,
+  ctx: ProgressContext | undefined,
   progress: number,
   total: number,
 ) {
-  if (!progressToken) return;
-  await server.notification({
-    method: 'notifications/progress',
-    params: { progressToken, progress, total },
-  });
+  if (!ctx?.progressToken) return;
+  try {
+    await server.notification(
+      { method: 'notifications/progress', params: { progressToken: ctx.progressToken, progress, total } },
+      { relatedRequestId: ctx.requestId },
+    );
+  } catch {
+    // Client may not support progress – ignore
+  }
 }
 
 export const researchChainSchema = {
@@ -41,17 +46,16 @@ This gives a complete overview of a topic's history and related context.`,
 export async function handleResearchChain(
   args: Record<string, unknown>,
   server: Server,
-  meta?: Record<string, unknown>,
+  progress?: ProgressContext,
 ): Promise<string> {
   const startFile = args.file as string | undefined;
   const startPath = args.path as string | undefined;
-  const progressToken = meta?.progressToken as string | number | undefined;
 
   if (!startFile && !startPath) {
     return JSON.stringify({ error: 'file oder path ist erforderlich.' });
   }
 
-  await sendProgress(server, progressToken, 1, 3);
+  await sendProgress(server, progress, 1, 3);
 
   // Resolve starting note
   let resolvedStart = await resolveNote(startFile, startPath);
@@ -71,7 +75,7 @@ export async function handleResearchChain(
     });
   }
 
-  await sendProgress(server, progressToken, 2, 3);
+  await sendProgress(server, progress, 2, 3);
 
   // Single eval call that does ALL the work inside Obsidian — no 370 CLI calls
   const code = `
@@ -176,7 +180,7 @@ export async function handleResearchChain(
 
   try {
     const result = await exec('eval', { code });
-    await sendProgress(server, progressToken, 3, 3);
+    await sendProgress(server, progress, 3, 3);
     // eval returns stringified JSON, parse and re-format
     const parsed = JSON.parse(result);
     return JSON.stringify(parsed, null, 2);
