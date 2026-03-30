@@ -4,6 +4,8 @@
 
 Ein MCP-Server der alle Vault-Operationen an die offizielle **Obsidian CLI (v1.12+)** delegiert und **32 Tools**, **MCP Resources** sowie **4 MCP Prompts** bereitstellt. Kein eigener Index, keine Datenbank — der Server kommuniziert direkt mit einer laufenden Obsidian-Instanz.
 
+Alle Tool-Ausgaben mit Notiz-Pfaden enthalten sowohl einen klickbaren `obsidian://`-Link als auch den rohen Vault-Pfad in Backticks — AI-Agenten koennen letzteren direkt in `read_note` weiterverwenden ohne URL-Dekodierung. Alle Tool-Aufrufe werden in `mcp-requests.log` protokolliert.
+
 ## Voraussetzungen
 
 | Voraussetzung | Details |
@@ -53,7 +55,7 @@ Ausgabe bei erfolgreichem Start:
 
 | Tool | Beschreibung |
 |---|---|
-| `search_notes` | Volltextsuche (gleiche Syntax wie Obsidians Suchleiste); jedes Ergebnis enthaelt einen `obsidian://`-Link |
+| `search_notes` | Volltextsuche (gleiche Syntax wie Obsidians Suchleiste); kurze Queries (1-2 Keywords) liefern beste Ergebnisse; jedes Ergebnis enthaelt `obsidian://`-Link + rohen Pfad in Backticks |
 | `read_note` | Notizen lesen (bulk, per paths-Array) |
 | `vault_stats` | Vault-Uebersicht: Name, Dateien, Ordner, Groesse, Top-Tags |
 
@@ -144,6 +146,18 @@ Vordefinierte Prompts fuer haeufige Aufgaben — werden von kompatiblen MCP-Clie
 | `research-topic` | Strukturierter Ueberblick ueber die Themenhistorie via `research_chain` | `note_file` (required), `depth` (optional: full/short) |
 | `daily-review` | Zeigt die heutige Daily Note und alle offenen Tasks | — |
 | `link-suggestions` | Analysiert Links und schlaegt thematisch passende, noch nicht verlinkte Notes vor | `note_path` (required) |
+
+## Request-Logging
+
+Alle Tool-Aufrufe werden in `mcp-requests.log` im Projektverzeichnis protokolliert (zusaetzlich zu stderr). Format:
+
+```
+2026-03-30T10:15:00.000Z [CALL] tool=search_notes args={"query":"Solarertrag"}
+2026-03-30T10:15:00.123Z [OK]   tool=search_notes → 342 chars
+2026-03-30T10:15:01.000Z [ERROR] tool=read_note → File "foo.md" not found
+```
+
+Die Logdatei wird nicht rotiert — bei Bedarf manuell loeschen oder `tail -f mcp-requests.log` zum Live-Monitoring verwenden.
 
 ## Architektur
 
@@ -252,4 +266,5 @@ Keine weiteren Runtime-Dependencies. Alles laeuft ueber die Obsidian CLI.
 | `File "X" not found` | Dateiname pruefen — `file=` loest wie Wikilinks auf, `path=` erwartet den exakten Vault-Pfad |
 | `EADDRINUSE: port 8201` | `lsof -ti:8201 \| xargs kill -9` |
 | CLI gibt Warnings aus | Normal bei aelterem Installer — werden automatisch gefiltert |
-| `search` gibt leere Ergebnisse | Obsidian-Suche nutzt andere Syntax als grep — z.B. `tag:#AI` statt `#AI` |
+| `search` gibt leere Ergebnisse | Kurze, einfache Queries verwenden (1-2 Keywords). Lange Compound-Queries liefern haeufig 0 Ergebnisse. Obsidian-Syntax: `tag:#AI` statt `#AI` |
+| Read-Note schlaegt fehl | Bei `file=`-Aufloesung: `.md`-Suffix nicht mitgeben — der Server entfernt es automatisch. Bei Pfaden mit `/` wird `path=` verwendet |

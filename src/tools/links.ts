@@ -1,6 +1,6 @@
 import { exec, execJson } from '../cli/obsidian-cli.js';
 import { VAULT_NAME } from '../config.js';
-import { formatObsidianLink } from '../utils/obsidian-links.js';
+import { formatObsidianLink, formatNoteEntry } from '../utils/obsidian-links.js';
 
 // ─── list_backlinks ───
 
@@ -41,7 +41,7 @@ export async function handleListBacklinks(args: Record<string, unknown>): Promis
       .map((item) => {
         const path = typeof item === 'string' ? item : item.path;
         const count = typeof item === 'object' && item.count ? ` (${item.count}x)` : '';
-        return `- ${formatObsidianLink(path, VAULT_NAME)}${count}`;
+        return `- ${formatNoteEntry(path, VAULT_NAME)}${count}`;
       })
       .join('\n');
   } catch {
@@ -91,7 +91,7 @@ export async function handleListLinks(args: Record<string, unknown>): Promise<st
 
   const paths = result.split('\n').filter(Boolean);
   return paths
-    .map((path) => `- ${formatObsidianLink(path.trim(), VAULT_NAME)}`)
+    .map((path) => `- ${formatNoteEntry(path.trim(), VAULT_NAME)}`)
     .join('\n');
 }
 
@@ -118,7 +118,7 @@ export async function handleListOrphans(args: Record<string, unknown>): Promise<
   if (args.total) return result;
 
   const paths = result.split('\n').filter(Boolean);
-  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
+  return paths.map((p) => `- ${formatNoteEntry(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── list_deadends ───
@@ -144,7 +144,7 @@ export async function handleListDeadends(args: Record<string, unknown>): Promise
   if (args.total) return result;
 
   const paths = result.split('\n').filter(Boolean);
-  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
+  return paths.map((p) => `- ${formatNoteEntry(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── list_unresolved ───

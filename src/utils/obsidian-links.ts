@@ -10,6 +10,18 @@ export function formatObsidianLink(path: string, vaultName: string, title?: stri
 }
 
 /**
+ * Formats a vault-relative note path for tool output:
+ * a clickable obsidian:// link followed by the raw path in backticks.
+ * The raw path allows AI agents to directly pass it to read_note without URL-decoding.
+ *
+ * Example output:
+ *   [My Note](obsidian://open?vault=...&file=...) `📚 Folder/My Note.md`
+ */
+export function formatNoteEntry(path: string, vaultName: string): string {
+  return `${formatObsidianLink(path, vaultName)} \`${path}\``;
+}
+
+/**
  * Generates the system-level formatting instructions for the AI client,
  * with the actual vault name baked in.
  */

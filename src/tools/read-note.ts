@@ -30,9 +30,10 @@ export async function handleReadNote(args: Record<string, unknown>): Promise<str
   const results = await Promise.all(
     pathList.map(async (p) => {
       try {
-        // Use path= for full paths (contain /), file= for name resolution
-        const isPath = p.includes('/') || p.endsWith('.md');
-        const params: Record<string, string> = isPath ? { path: p } : { file: p };
+        // Use path= for full vault-relative paths (contain /), file= for name-only resolution
+        const isPath = p.includes('/');
+        const fileArg = isPath ? p : p.replace(/\.md$/i, '');
+        const params: Record<string, string> = isPath ? { path: p } : { file: fileArg };
         const content = await exec('read', params);
         return { path: p, content };
       } catch (err) {

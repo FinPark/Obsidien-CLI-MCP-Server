@@ -1,6 +1,6 @@
 import { exec } from '../cli/obsidian-cli.js';
 import { VAULT_NAME } from '../config.js';
-import { formatObsidianLink } from '../utils/obsidian-links.js';
+import { formatObsidianLink, formatNoteEntry } from '../utils/obsidian-links.js';
 
 // ─── list_recents ───
 
@@ -26,7 +26,7 @@ export async function handleListRecents(args: Record<string, unknown>): Promise<
   if (args.total) return result;
 
   const paths = result.split('\n').filter(Boolean);
-  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
+  return paths.map((p) => `- ${formatNoteEntry(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── append_note ───
@@ -207,7 +207,7 @@ export async function handleListFiles(args: Record<string, unknown>): Promise<st
   if (ext !== 'md') return result;
 
   const paths = result.split('\n').filter(Boolean);
-  return paths.map((p) => `- ${formatObsidianLink(p.trim(), VAULT_NAME)}`).join('\n');
+  return paths.map((p) => `- ${formatNoteEntry(p.trim(), VAULT_NAME)}`).join('\n');
 }
 
 // ─── list_modified_notes ───

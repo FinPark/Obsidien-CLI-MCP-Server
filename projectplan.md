@@ -4,9 +4,9 @@
 
 Build a production-ready MCP server that exposes the full Obsidian vault via structured tools for AI assistants. The server targets a personal German-language work vault with ~3600 notes containing meeting records, concepts, and project documentation.
 
-## Status: v2.3.0 – list_modified_notes, Tool-Beschreibungen und Config-Bereinigung
+## Status: v2.4.0 – Request-Logging, formatNoteEntry und Search-UX
 
-Date: 2026-03-26
+Date: 2026-03-30
 
 ---
 
@@ -127,6 +127,28 @@ Date: 2026-03-26
 - [x] `src/tools/note-management.ts` — `file_info` Beschreibung: Warnung gegen Loop-Nutzung, stattdessen `list_modified_notes`
 - [x] `src/tools/note-management.ts` — Neues Tool `list_modified_notes`: nutzt `eval`-Befehl mit `app.vault.getMarkdownFiles()` und `f.stat.mtime` — ein einziger CLI-Call statt N x `file_info`-Calls; gibt Ergebnis als Markdown-Tabelle mit Datum und Notizlink aus
 - [x] `src/server.ts` — `list_modified_notes` registriert (Schema + Handler)
+
+---
+
+### M15 — Request-Logging, formatNoteEntry & Search-UX (v2.4.0) — CURRENT
+
+**Request-Logging**
+- [x] `src/server.ts` — `log()` Funktion: schreibt Zeilen mit ISO-Timestamp nach stderr UND in `mcp-requests.log`
+- [x] `src/server.ts` — Logging an drei Stellen: `[CALL]` vor Handler-Aufruf, `[OK]` nach Erfolg (mit Antwortlaenge), `[ERROR]` bei unbekanntem Tool oder Exception
+- [x] `mcp-requests.log` in `.gitignore` aufgenommen (Logdatei wird nicht versioniert)
+
+**formatNoteEntry — doppelte Ausgabe (Link + Rohpfad)**
+- [x] `src/utils/obsidian-links.ts` — neue Funktion `formatNoteEntry(path, vaultName)`: gibt `obsidian://`-Link PLUS rohen Vault-Pfad in Backticks zurueck — AI-Agenten koennen den Backtick-Pfad direkt in `read_note` verwenden ohne URL-Dekodierung
+- [x] `src/tools/links.ts` — `handleListBacklinks`, `handleListLinks`, `handleListOrphans`, `handleListDeadends` verwenden `formatNoteEntry` statt `formatObsidianLink`
+- [x] `src/tools/note-management.ts` — `handleListRecents`, `handleListFiles` verwenden `formatNoteEntry`
+- [x] `src/tools/search-notes.ts` — Path-Ausgabe verwendet `formatNoteEntry`
+
+**Search-UX Verbesserungen**
+- [x] `src/tools/search-notes.ts` — Tool-Beschreibung mit konkreten Search-Tipps: kurze Queries (1-2 Keywords) empfohlen, schlechte vs. gute Beispiele, Hinweis fuer `context:true` Use-Case
+- [x] `src/tools/search-notes.ts` — Context-Modus: Ergebnisse werden nach Datei gruppiert, jede Datei erhaelt einen `formatNoteEntry`-Header gefolgt von den Matching-Lines mit `> ` Prefix
+
+**read_note Bugfix**
+- [x] `src/tools/read-note.ts` — Fix: `.md`-Suffix wurde bei `file=`-Aufloesung mitgegeben obwohl die CLI ohne Suffix erwartet; jetzt: Suffix wird bei Name-Aufloesung entfernt, nur Pfade mit `/` nutzen `path=`
 
 ---
 

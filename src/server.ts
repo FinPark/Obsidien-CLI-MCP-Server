@@ -1,4 +1,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const LOG_FILE = join(import.meta.dirname, '..', 'mcp-requests.log');
+function log(msg: string) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  process.stderr.write(line);
+  try { appendFileSync(LOG_FILE, line); } catch { /* ignore */ }
+}
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -129,7 +138,11 @@ export function createServer(): Server {
     const { name, arguments: args } = request.params;
     const handler = handlers[name];
 
+    const ts = new Date().toISOString();
+    log(`[CALL] tool=${name} args=${JSON.stringify(args)}`);
+
     if (!handler) {
+      log(`[ERROR] tool=${name} → unknown tool`);
       return {
         content: [{ type: 'text', text: `Unknown tool: ${name}` }],
         isError: true,
@@ -143,11 +156,13 @@ export function createServer(): Server {
         requestId: extra.requestId,
       };
       const result = await handler(args ?? {}, server, progress);
+      log(`[OK]   tool=${name} → ${result.length} chars`);
       return {
         content: [{ type: 'text', text: result }],
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      log(`[ERROR] tool=${name} → ${message}`);
       return {
         content: [{ type: 'text', text: `Error: ${message}` }],
         isError: true,
